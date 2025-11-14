@@ -15,6 +15,8 @@ from transformers import BertTokenizer, BertConfig
 
 from doduo.dataset import collate_fn
 from doduo.models import BertForMultiOutputClassification
+from collections import OrderedDict
+
 sato_coltypes = [
     "address", "affiliate", "affiliation", "age", "album", "area", "artist",
     "birthDate", "birthPlace", "brand", "capacity", "category", "city",
@@ -141,9 +143,22 @@ class Doduo:
             output_hidden_states=True,
         ).to(self.device)
         self.coltype_model.load_state_dict(
-            torch.load(coltype_model_path, map_location=self.device))
+            self.rename_ordered_dict(torch.load(coltype_model_path, map_location=self.device),
+                                     self.rename_func),strict=False)
         self.coltype_model.eval()
 ############################################################
+    def rename_ordered_dict(self, ordered_dict, rename_func):
+        """Переименовывает ключи в OrderedDict используя функцию rename_func"""
+        new_ordered_dict = OrderedDict()
+        for old_key, value in ordered_dict.items():
+            new_key = self.rename_func(old_key)
+            new_ordered_dict[new_key] = value
+        return new_ordered_dict
+
+    # Использование
+    def rename_func(self,key):
+        return key.replace("bert.", "")
+
 
     def annotate_columns(self, df: pd.DataFrame)-> List[List[Tuple[str,float]]]:
         
