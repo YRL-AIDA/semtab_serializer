@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader, Dataset
 
 import transformers
 from transformers import BertTokenizer, BertConfig
-
+#from modelscope import AutoTokenizer
+#from modelscope.models.nlp.bert.backbone import  BertConfig
 from doduo.dataset import collate_fn
 from doduo.models import BertForMultiOutputClassification
 from collections import OrderedDict
@@ -91,7 +92,7 @@ class DFColTypeTablewiseDataset(Dataset):
 
 class Doduo:
 
-    def __init__(self, args=None, basedir="./"):
+    def __init__(self, args=None, basedir="./doduo"):
         #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
 
@@ -100,8 +101,8 @@ class Doduo:
 
         self.args = args
         self.args.colpair = True
-        #self.args.shortcut_name = "bert-base-uncased"
-        self.args.shortcut_name = "google-bert/bert-base-uncased"
+        self.args.shortcut_name = "bert-base-uncased"
+        #self.args.shortcut_name = "google-bert/bert-base-uncased"
         self.args.batch_size = 16
         self.device = torch.device(self.args.device)
         ## Load models
@@ -143,27 +144,20 @@ class Doduo:
             output_hidden_states=True,
         ).to(self.device)
         self.coltype_model.load_state_dict(
-            self.rename_ordered_dict(torch.load(coltype_model_path, map_location=self.device),
-                                     self.rename_func),strict=False)
+            torch.load(coltype_model_path, map_location=self.device),strict=False)
         self.coltype_model.eval()
 ############################################################
-    def rename_ordered_dict(self, ordered_dict, rename_func):
-        """Переименовывает ключи в OrderedDict используя функцию rename_func"""
-        new_ordered_dict = OrderedDict()
-        for old_key, value in ordered_dict.items():
-            new_key = self.rename_func(old_key)
-            new_ordered_dict[new_key] = value
-        return new_ordered_dict
 
     # Использование
     def rename_func(self,key):
         return key.replace("bert.", "")
 
 
-    def annotate_columns(self, df: pd.DataFrame)-> List[List[Tuple[str,float]]]:
+    def annotate_columns(self, df: pd.DataFrame, top_k: int= 1, threshold: float = 0.5)-> List[List[Tuple[str,float]]]:
         
         ## Dataset
         input_dataset = DFColTypeTablewiseDataset(df, self.tokenizer)
+        print(input_dataset[0])
         input_dataloader = DataLoader(input_dataset,
                                       batch_size=self.args.batch_size,
                                       collate_fn=collate_fn)
@@ -207,22 +201,22 @@ class Doduo:
             i, j = cls_indexes[n]
             logit_n = logits[i, j, :]
             filtered_logits[n] = logit_n
-        k = 3  # количество топ-классов для вывода
-        topk_values, topk_indices = filtered_logits.topk(k, dim=1)
+          # top_k количество топ-классов для вывода
+        topk_values, topk_indices = filtered_logits.topk(top_k, dim=1)
         
         # Преобразуем логиты в вероятности с помощью softmax
         probabilities = torch.softmax(filtered_logits, dim=1)
-        topk_probs, topk_prob_indices = probabilities.topk(k, dim=1)
+        topk_probs, topk_prob_indices = probabilities.topk(top_k, dim=1)
         
         print(topk_values, topk_indices)
         print(topk_probs, topk_prob_indices)
         if self.args.model == "viznet":
             coltype_pred_labels = [[(sato_coltypes[idx],prob) 
-                                    for prob,idx in zip(col_probs,col_idx)] 
+                                    for prob,idx in zip(col_probs,col_idx) if prob > threshold]
                                    for col_probs,col_idx in zip(topk_probs.detach().numpy(),topk_prob_indices.detach().numpy())]
         elif self.args.model == "wikitable":
             coltype_pred_labels = [[(self.coltype_mlb.classes_[idx],prob) 
-                                    for prob,idx in zip(col_probs,col_idx)] 
+                                    for prob,idx in zip(col_probs,col_idx) if prob > threshold]
                                    for col_probs,col_idx in zip(topk_probs.detach().numpy(),topk_prob_indices.detach().numpy())]
         #coltype_pred = filtered_logits.argmax(1)
         #if self.args.model == "viznet":

@@ -25,13 +25,13 @@ from torch.nn import CrossEntropyLoss, MSELoss
 
 import transformers
 from transformers import BertPreTrainedModel
-import modelscope
-from modelscope import BertPreTrainedModel
-from modelscope.models.nlp.bert.backbone import BertEmbeddings, BertEncoder
-#if version.parse(transformers.__version__) < version.parse("4.1.1"):
- #   from transformers.modeling_bert import BertEmbeddings, BertEncoder
-#else:
-#    from transformers.models.bert.modeling_bert import BertEmbeddings, BertEncoder
+#import modelscope
+#from modelscope.models.nlp.bert.backbone import BertPreTrainedModel
+#from modelscope.models.nlp.bert.backbone import BertEmbeddings, BertEncoder
+if version.parse(transformers.__version__) < version.parse("4.1.1"):
+    from transformers.modeling_bert import BertEmbeddings, BertEncoder
+else:
+    from transformers.models.bert.modeling_bert import BertEmbeddings, BertEncoder
 
 
 class BertMultiPooler(nn.Module):
