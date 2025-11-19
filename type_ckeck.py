@@ -3,27 +3,28 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
 
-
 def check_type_comprehensive(series):
     if series is None or series.empty:
-        return None
+        return 'unknown', 0
 
-    # Регулярные выражения для разных типов
+    # Исправленные регулярные выражения
     exp_pattern = re.compile(r'^[-+]?(?:\d+\.?\d*|\.\d+)[eE][-+]?\d+$')
-    float_pattern = re.compile(r'^[+-]?(?:\d+\.\d*|\.\d+)$')
+    float_pattern = re.compile(r'^[+-]?(?:\d+\.\d+|\.\d+)$')  # ТОЛЬКО если есть дробная часть
     int_pattern = re.compile(r'^[+-]?\d+$')
 
-    # Расширенные паттерны для дат
+    # Булевы значения - только строковые представления
+    bool_true_pattern = re.compile(r'^(true|yes|да|истина)$', re.IGNORECASE)
+    bool_false_pattern = re.compile(r'^(false|no|нет|ложь)$', re.IGNORECASE)
+
+    # Паттерны для дат и времени (оставляем как есть)
     date_patterns = {
         'date_iso': re.compile(r'^\d{4}-\d{1,2}-\d{1,2}$'),
         'date_us': re.compile(r'^\d{1,2}-\d{1,2}-\d{4}$'),
         'date_eu': re.compile(r'^\d{1,2}\.\d{1,2}\.\d{4}$'),
         'date_slash': re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$'),
-        'date_slash_eu': re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$'),
         'date_year_last': re.compile(r'^\d{1,2}-\d{1,2}-\d{2}$'),
     }
 
-    # Паттерны для времени
     time_patterns = {
         'time_basic': re.compile(r'^\d{1,2}:\d{2}$'),
         'time_seconds': re.compile(r'^\d{1,2}:\d{2}:\d{2}$'),
@@ -31,90 +32,101 @@ def check_type_comprehensive(series):
         'time_12h': re.compile(r'^\d{1,2}:\d{2}\s?[APap][Mm]$'),
     }
 
-    # Паттерны для даты-времени
     datetime_patterns = {
         'datetime_iso': re.compile(r'^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}'),
         'datetime_common': re.compile(r'^\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}'),
     }
 
-    types_of_text = []
+    type_counts = {}
     nan_count = 0
 
-    for text in series:
-        if pd.isna(text):
-            types_of_text.append({'nan': 1})
+    for value in series:
+        if pd.isna(value):
             nan_count += 1
             continue
 
-        array_types = {}
-        words = re.split(r'[\s,;]+', str(text))
+        str_value = str(value).strip()
+        if not str_value:
+            type_counts['empty'] = type_counts.get('empty', 0) + 1
+            continue
 
-        for word in words:
-            clean_word = word.strip('.,!?;:"\'()[]{}')
+        found_type = False
 
-            if not clean_word:
-                continue
-
-            found_type = False
-
-            # Проверка на ДАТУ
-            if not found_type:
-                for date_type, pattern in date_patterns.items():
-                    if pattern.match(clean_word):
-                        try:
-                            pd.to_datetime(clean_word)
-                            array_types['date'] = array_types.get('date', 0) + 1
-                            found_type = True
-                            break
-                        except:
-                            continue
-
-            # Проверка на ВРЕМЯ
-            if not found_type:
-                for time_type, pattern in time_patterns.items():
-                    if pattern.match(clean_word):
-                        array_types['time'] = array_types.get('time', 0) + 1
+        # 1. Проверка на ДАТУ-ВРЕМЯ (самый специфичный тип)
+        if not found_type:
+            for pattern in datetime_patterns.values():
+                if pattern.match(str_value):
+                    try:
+                        pd.to_datetime(str_value)
+                        type_counts['datetime'] = type_counts.get('datetime', 0) + 1
                         found_type = True
                         break
+                    except:
+                        continue
 
-            # Проверка на ДАТУ-ВРЕМЯ
-            if not found_type:
-                for datetime_type, pattern in datetime_patterns.items():
-                    if pattern.match(clean_word):
-                        try:
-                            pd.to_datetime(clean_word)
-                            array_types['datetime'] = array_types.get('datetime', 0) + 1
-                            found_type = True
-                            break
-                        except:
-                            continue
+        # 2. Проверка на ДАТУ
+        if not found_type:
+            for pattern in date_patterns.values():
+                if pattern.match(str_value):
+                    try:
+                        pd.to_datetime(str_value)
+                        type_counts['date'] = type_counts.get('date', 0) + 1
+                        found_type = True
+                        break
+                    except:
+                        continue
 
-            # Проверка на НАУЧНУЮ НОТАЦИЮ
-            if not found_type and exp_pattern.match(clean_word):
-                array_types['exp'] = array_types.get('exp', 0) + 1
+        # 3. Проверка на ВРЕМЯ
+        if not found_type:
+            for pattern in time_patterns.values():
+                if pattern.match(str_value):
+                    type_counts['time'] = type_counts.get('time', 0) + 1
+                    found_type = True
+                    break
+
+        # 4. Проверка на INT (перед float!)
+        if not found_type and int_pattern.match(str_value):
+            type_counts['int'] = type_counts.get('int', 0) + 1
+            found_type = True
+
+        # 5. Проверка на НАУЧНУЮ НОТАЦИЮ
+        if not found_type and exp_pattern.match(str_value):
+            type_counts['float'] = type_counts.get('float', 0) + 1
+            found_type = True
+
+        # 6. Проверка на FLOAT
+        if not found_type and float_pattern.match(str_value):
+            type_counts['float'] = type_counts.get('float', 0) + 1
+            found_type = True
+
+        # 7. Проверка на BOOL (после чисел!)
+        if not found_type:
+            if bool_true_pattern.match(str_value) or bool_false_pattern.match(str_value):
+                type_counts['bool'] = type_counts.get('bool', 0) + 1
                 found_type = True
 
-            # Проверка на FLOAT
-            if not found_type and float_pattern.match(clean_word):
-                array_types['float'] = array_types.get('float', 0) + 1
-                found_type = True
+        # 8. Проверка на булевы значения 0/1 (только если не распознаны как числа)
+        if not found_type and str_value in ('0', '1'):
+            type_counts['bool'] = type_counts.get('bool', 0) + 1
+            found_type = True
 
-            # Проверка на INT
-            if not found_type and int_pattern.match(clean_word):
-                array_types['int'] = array_types.get('int', 0) + 1
-                found_type = True
+        # Все остальное - строка
+        if not found_type:
+            type_counts['str'] = type_counts.get('str', 0) + 1
 
-            # Все остальное - строка
-            if not found_type:
-                array_types['str'] = array_types.get('str', 0) + 1
+    # Обработка случая, когда все значения - пропуски
+    if not type_counts and nan_count > 0:
+        return 'unknown', nan_count
 
-        types_of_text.append(array_types)
+    # Находим наиболее частый тип (исключая 'empty')
+    valid_types = {k: v for k, v in type_counts.items() if k != 'empty'}
 
-    # Добавляем общую статистику по NaN в конец результатов
-    if nan_count > 0:
-        types_of_text.append({'_summary': {'nan_count': nan_count, 'total_count': len(series)}})
+    if not valid_types:
+        return 'unknown', nan_count
 
-    return types_of_text
+    max_type = max(valid_types, key=valid_types.get)
+
+    return max_type, nan_count
 
 
 def process_column_parallel(column_name, dataset):

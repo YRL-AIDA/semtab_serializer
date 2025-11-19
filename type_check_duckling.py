@@ -13,11 +13,11 @@ def parse_text(text, locale='en_US'):  # исправил локаль на en_U
     return response.json()
 
 
-def df_to_duckling(df):
+def df_to_duckling(df,lines = 5):
     df_types = {}
     for column in df.columns:  # итерируем по колонкам
         # Берем первые 50 значений из каждой колонки
-        first_50_values = df[column].head(5).tolist()
+        first_50_values = df[column].head(lines).tolist()
         df_types[column] = []
 
         # Обрабатываем каждое значение
@@ -34,9 +34,6 @@ def df_to_duckling(df):
 # Загрузка данных
 df = pd.read_csv('Amazon Sale Report.csv')
 
-# Берем первые 50 строк (записей)
-df_first_50 = df.head(5)
-
 # Анализируем
-result = df_to_duckling(df_first_50)
+result = df_to_duckling(df,5)
 print(result)
