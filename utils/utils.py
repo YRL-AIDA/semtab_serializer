@@ -1,19 +1,35 @@
 from pandas import DataFrame
-from typing import List, Tuple, Dict, Any, Union
+from typing import List, Tuple, Dict, Any, Union, Callable
+import inspect
+import xml.etree.ElementTree as ET
+import json
+import numpy as np
 from doduo.doduo import Doduo
 import argparse
 import re
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
-
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+        
 def get_item(arr: List, idx: int) -> Any:
     try:
         return arr[idx]
     except IndexError:
         return None
 
-
+def get_kwargs(kwargs: Dict[str,Any],func: Callable) -> Dict[str,Any]:
+    sig = inspect.signature(func)
+    return {key:value for key,value in kwargs.items() if key in sig.parameters}
+    
 def make_semantic_columns_name(table: DataFrame, model: str = "doduo--viznet", top_k: int = 1, device: str = 'cpu',
                                basedir: str = './doduo', threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
     proj, model_type = model.split("--")
@@ -178,3 +194,37 @@ def analyze_dataset_parallel(dataset: Union[Dict, pd.DataFrame], max_workers: in
             results[column_name] = column_result
 
     return results
+
+def serialize_table(table: pd.DataFrame,include_data_types: bool = True,include_semantic_types: bool = True,include_examples: bool = True,
+                    examples_count: int = 3, description: str = "",**kwargs) -> str:
+    table_xml = ET.Element("TABLE")
+    data_types = None
+    sem_types = None
+    if description != '':
+        descr = ET.SubElement(table_xml, "DESCRIPTION")
+        descr.text = description
+    if include_data_types:
+        data_types = analyze_dataset_parallel(table,**get_kwargs(kwargs,analyze_dataset_parallel))
+    if include_semantic_types:
+        sem_types = make_semantic_columns_name(table,**get_kwargs(kwargs,make_semantic_columns_name))
+    for col_idx, column_name in enumerate(table.columns):
+        head =  ET.SubElement(table_xml, "HEADER")
+        name = ET.SubElement(head, "NAME")
+        name.text = str(column_name)
+        if include_semantic_types:
+            sem_t = ET.SubElement(head, "SEMANTIC_TYPE")
+            sem_t.text = 'NO TYPE'
+            sem_t.text = " ; ".join([" - ".join([type_,str(round(prop,2))]) for type_,prop in sem_types[col_idx][1].items()])
+        
+        if include_data_types:
+            data_t = ET.SubElement(head, "DATA_TYPE")
+            print('data_type',column_name,data_types[column_name][0])
+            data_t.text = json.dumps(data_types[column_name][0])
+            data_t_none = ET.SubElement(head, "HAS_NONE")
+            print('data_none',column_name,data_types[column_name][1])
+            data_t_none.text = '1' if data_types[column_name][1] else '0'
+        if include_examples:
+            example = ET.SubElement(head, "EXAMPLES")
+            example.text = json.dumps(table[column_name].sample(examples_count).to_list(),cls=NumpyEncoder)
+        
+    return ET.tostring(table_xml, encoding='unicode')
