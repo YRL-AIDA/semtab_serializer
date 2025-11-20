@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 def check_type_comprehensive(series):
     if series is None or series.empty:
-        return 'unknown', 0
+        return 'None', 0
 
     # Исправленные регулярные выражения
     exp_pattern = re.compile(r'^[-+]?(?:\d+\.?\d*|\.\d+)[eE][-+]?\d+$')
@@ -116,15 +116,18 @@ def check_type_comprehensive(series):
 
     # Обработка случая, когда все значения - пропуски
     if not type_counts and nan_count > 0:
-        return 'unknown', nan_count
+        return 'None', nan_count
 
     # Находим наиболее частый тип (исключая 'empty')
     valid_types = {k: v for k, v in type_counts.items() if k != 'empty'}
 
     if not valid_types:
-        return 'unknown', nan_count
+        return 'None', nan_count
 
     max_type = max(valid_types, key=valid_types.get)
+
+    if max_type == 'int' and 'float' in valid_types:
+        max_type = 'float'
 
     return max_type, nan_count
 
