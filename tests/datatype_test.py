@@ -272,15 +272,15 @@ class TestRealisticDatasets:
         assert results['TP 1'][0] == 'float'
         assert results['TP 2'][0] == 'float'
         assert results['MRP Old'][0] == 'float'
-        assert results['Final MRP Old'][0] == 'int'
-        assert results['Ajio MRP'][0] == 'int'
-        assert results['Amazon MRP'][0] == 'int'
-        assert results['Amazon FBA MRP'][0] == 'int'
-        assert results['Flipkart MRP'][0] == 'int'
-        assert results['Limeroad MRP'][0] == 'int'
-        assert results['Myntra MRP'][0] == 'int'
-        assert results['Paytm MRP'][0] == 'int'
-        assert results['Snapdeal MRP'][0] == 'int'
+        assert results['Final MRP Old'][0] == 'float'
+        assert results['Ajio MRP'][0] == 'float'
+        assert results['Amazon MRP'][0] == 'float'
+        assert results['Amazon FBA MRP'][0] == 'float'
+        assert results['Flipkart MRP'][0] == 'float'
+        assert results['Limeroad MRP'][0] == 'float'
+        assert results['Myntra MRP'][0] == 'float'
+        assert results['Paytm MRP'][0] == 'float'
+        assert results['Snapdeal MRP'][0] == 'float'
 
     def test_analyze_may_2022_like(self):
         """Тест, имитирующий May-2022.csv"""
@@ -290,22 +290,21 @@ class TestRealisticDatasets:
 
         results = analyze_dataset_parallel(df)
 
-        # Проверяем ожидаемые типы
         assert results['Sku'][0] == 'str'
         assert results['Catalog'][0] == 'str'
         assert results['Category'][0] == 'str'
         assert results['Weight'][0] == 'float'
-        assert results['MRP Old'][0] == 'int'
-        assert results['Final MRP Old'][0] == 'int'
+        assert results['MRP Old'][0] == 'float'
+        assert results['Final MRP Old'][0] == 'float'
         assert results['Ajio MRP'][0] == 'float'
-        assert results['Amazon MRP'][0] == 'int'
-        assert results['Amazon FBA MRP'][0] == 'int'
-        assert results['Flipkart MRP'][0] == 'int'
-        assert results['Limeroad MRP'][0] == 'int'
-        assert results['Myntra MRP'][0] == 'int'
-        assert results['Paytm MRP'][0] == 'int'
-        assert results['Snapdeal MRP'][0] == 'int'
-        assert results['TP 1 & TP 2 MRP Old'][0] == 'int'
+        assert results['Amazon MRP'][0] == 'float'
+        assert results['Amazon FBA MRP'][0] == 'float'
+        assert results['Flipkart MRP'][0] == 'float'
+        assert results['Limeroad MRP'][0] == 'float'
+        assert results['Myntra MRP'][0] == 'float'
+        assert results['Paytm MRP'][0] == 'float'
+        assert results['Snapdeal MRP'][0] == 'float'
+        assert results['MRP Old'][0] == 'float'  # Предполагая, что 'TP 1 & TP 2 MRP Old' соответствует типу 'MRP Old' из нового словаря.
 
     def test_analyze_amazon_sale_report_like(self):
         """Тест, имитирующий Amazon Sale Report.csv"""

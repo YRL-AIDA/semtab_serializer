@@ -170,7 +170,7 @@ def analyze_dataset_parallel(dataset, max_workers=None):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(process_column_parallel, column, dataset)
-            for column in dataset.column_names
+            for column in dataset.columns
         ]
 
         for future in futures:
