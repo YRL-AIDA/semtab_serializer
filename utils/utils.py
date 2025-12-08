@@ -4,7 +4,7 @@ import inspect
 import xml.etree.ElementTree as ET
 import json
 import numpy as np
-from doduo.doduo import Doduo
+from utils.doduo.doduo import Doduo
 import argparse
 import re
 import pandas as pd
@@ -30,17 +30,14 @@ def get_kwargs(kwargs: Dict[str,Any],func: Callable) -> Dict[str,Any]:
     sig = inspect.signature(func)
     return {key:value for key,value in kwargs.items() if key in sig.parameters}
     
-def make_semantic_columns_name(table: DataFrame, model: str = "doduo--viznet", top_k: int = 1, device: str = 'cpu',
-                               basedir: str = './doduo', threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
-    proj, model_type = model.split("--")
-    if proj == "doduo":
-        model = Doduo(argparse.Namespace(**{'model': model_type, 'device': device}), basedir=basedir)
-        columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold)
-        semantic_columns_name = []
-        for col_id, col_name in enumerate(table.columns):
-            sem_col_types = get_item(columns_annotations, col_id)
-            sem_col_types = sem_col_types if sem_col_types is not None else [(None, None)]
-            semantic_columns_name.append((col_name, {col_types[0]: col_types[1] for col_types in sem_col_types}))
+def make_semantic_columns_name(table: DataFrame, model: Doduo = None, top_k: int = 1,
+                               threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
+    columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold)
+    semantic_columns_name = []
+    for col_id, col_name in enumerate(table.columns):
+        sem_col_types = get_item(columns_annotations, col_id)
+        sem_col_types = sem_col_types if sem_col_types is not None else [(None, None)]
+        semantic_columns_name.append((col_name, {col_types[0]: col_types[1] for col_types in sem_col_types}))
 
     return semantic_columns_name
 
@@ -218,13 +215,14 @@ def serialize_table(table: pd.DataFrame,include_data_types: bool = True,include_
         
         if include_data_types:
             data_t = ET.SubElement(head, "DATA_TYPE")
-            print('data_type',column_name,data_types[column_name][0])
+            #print('data_type',column_name,data_types[column_name][0])
             data_t.text = json.dumps(data_types[column_name][0])
             data_t_none = ET.SubElement(head, "HAS_NONE")
-            print('data_none',column_name,data_types[column_name][1])
+            #print('data_none',column_name,data_types[column_name][1])
             data_t_none.text = '1' if data_types[column_name][1] else '0'
         if include_examples:
             example = ET.SubElement(head, "EXAMPLES")
-            example.text = json.dumps(table[column_name].sample(examples_count).to_list(),cls=NumpyEncoder)
+            column_size = table[column_name].shape[0]
+            example.text = json.dumps(table[column_name].sample(examples_count).to_list() if column_size> examples_count else table[column_name].to_list(),cls=NumpyEncoder)
         
     return ET.tostring(table_xml, encoding='unicode')

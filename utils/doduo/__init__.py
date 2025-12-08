@@ -1,1 +1,1 @@
-from doduo.doduo import *
+from .doduo import *
