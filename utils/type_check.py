@@ -1,8 +1,7 @@
 import re
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
-from typing import Union, Tuple, Any, List
-
+from typing import Union, Any, Optional, Dict,Tuple
 
 def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, int]:
     """
@@ -157,13 +156,13 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
     return result_type, nan_count
 
 
-def process_column_parallel(column_name, dataset):
+def process_column_parallel(column_name: str, dataset: Any) -> Tuple[str, Tuple[str, int]]:
     """Обрабатывает одну колонку параллельно"""
     series = pd.Series(dataset[column_name])
     return column_name, check_type_comprehensive(series)
 
 
-def analyze_dataset_parallel(dataset, max_workers=None):
+def analyze_dataset_parallel(dataset: pd.DataFrame,max_workers: Optional[int] = None) -> Dict[str, Tuple[str, int]]:
     """Параллельно анализирует все колонки датасета"""
     results = {}
 
@@ -178,3 +177,4 @@ def analyze_dataset_parallel(dataset, max_workers=None):
             results[column_name] = column_result
 
     return results
+
