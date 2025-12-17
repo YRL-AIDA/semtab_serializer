@@ -78,30 +78,30 @@ class TestCheckTypeComprehensive:
 
     # Тест: Серия с преобладающим типом - int
     @pytest.mark.parametrize("data, expected_type", [
-        ([1, 2, 3], 'int'),
-        (['1', '2', '3'], 'int'),
-        ([1, 2, '3'], 'int'), # 3 int, 1 str -> int
+        ([1, 2, 3], const_int),
+        (['1', '2', '3'], const_int),
+        ([1, 2, '3'], const_int), # 3 int, 1 str -> int
     ])
     def test_dominant_int(self, data, expected_type):
         series = pd.Series(data)
         # expected_type преобразуем в константу
-        expected_constant = self.const_int if expected_type == 'int' else expected_type # Здесь только 'int'
+        expected_constant = self.const_int if expected_type == self.const_int else expected_type
         result_type, nan_count = check_type_comprehensive(series)
         assert result_type == expected_constant
         assert nan_count == 0
 
     # Тест: Серия с преобладающим типом - float
     @pytest.mark.parametrize("data, expected_type", [
-        ([1.1, 2.2, 3.3], 'float'),
-        (['1.1', '2.2', '3.3'], 'float'),
-        ([1.1, 2, '3.3'], 'float'), # 2 float (1.1, 3.3), 1 int (2), 1 str -> float
-        ([1, 2, 3.0], 'float'), # Смешение int и float -> float
-        (['1e10', '2.5', '3'], 'float'), # Научная нотация
+        ([1.1, 2.2, 3.3], const_float),
+        (['1.1', '2.2', '3.3'], const_float),
+        ([1.1, 2, '3.3'], const_float), # 2 float (1.1, 3.3), 1 int (2), 1 str -> float
+        ([1, 2, 3.0], const_float), # Смешение int и float -> float
+        (['1e10', '2.5', '3'], const_float), # Научная нотация
     ])
     def test_dominant_float(self, data, expected_type):
         series = pd.Series(data)
         # expected_type преобразуем в константу
-        expected_constant = self.const_float if expected_type == 'float' else expected_type # Здесь только 'float'
+        expected_constant = self.const_float if expected_type == self.const_float else expected_type # Здесь только 'float'
         result_type, nan_count = check_type_comprehensive(series)
         assert result_type == expected_constant
         assert nan_count == 0
@@ -115,14 +115,14 @@ class TestCheckTypeComprehensive:
 
     # Тест: Серия с преобладающим типом - bool
     @pytest.mark.parametrize("data, expected_type", [
-        ([True, False, True], 'bool'),
-        (['true', 'false', 'True'], 'bool'),
-        (['yes', 'no', 'YES'], 'bool'),
+        ([True, False, True], const_bool),
+        (['true', 'false', 'True'], const_bool),
+        (['yes', 'no', 'YES'], const_bool),
     ])
     def test_dominant_bool(self, data, expected_type):
         series = pd.Series(data)
         # expected_type преобразуем в константу
-        expected_constant = self.const_bool if expected_type == 'bool' else expected_type # Здесь только 'bool'
+        expected_constant = self.const_bool if expected_type == self.const_bool else expected_type # Здесь только 'bool'
         result_type, nan_count = check_type_comprehensive(series)
         assert result_type == expected_constant
         assert nan_count == 0
