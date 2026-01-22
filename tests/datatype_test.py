@@ -5,9 +5,9 @@ import numpy as np
 from unittest.mock import Mock
 from utils.type_check import check_type_comprehensive, analyze_dataset_parallel, process_column_parallel
 
-# --- Тесты для check_type_comprehensive ---
 
-class TestCheckTypeComprehensive:
+# Общие константы для всех тестовых классов
+class TestConstants:
     const_None = 'None'
     const_int = 'int'
     const_float = 'float'
@@ -15,8 +15,11 @@ class TestCheckTypeComprehensive:
     const_time = 'time'
     const_bool = 'bool'
     const_str = 'str'
-    const_datetime = 'datetime' # Добавил для полноты
+    const_datetime = 'datetime'
 
+
+# --- Тесты для check_type_comprehensive ---
+class TestCheckTypeComprehensive(TestConstants):
     # Тест: Обработка None
     def test_none_input(self):
         result_type, nan_count = check_type_comprehensive(None)
@@ -57,7 +60,7 @@ class TestCheckTypeComprehensive:
     def test_empty_series(self):
         series = pd.Series([], dtype=object)
         result_type, nan_count = check_type_comprehensive(series)
-        assert result_type == self.const_None # Согласно логике функции
+        assert result_type == self.const_None
         assert nan_count == 0
 
     # Тест: Серия только с NaN
@@ -71,60 +74,52 @@ class TestCheckTypeComprehensive:
     def test_all_empty_str_series(self):
         series = pd.Series(['', '  ', ''])
         result_type, nan_count = check_type_comprehensive(series)
-        # empty идет в type_counts, но max берется из valid_types (без empty), остается пусто
         assert result_type == self.const_None
         assert nan_count == 0
 
-
     # Тест: Серия с преобладающим типом - int
     @pytest.mark.parametrize("data, expected_type", [
-        ([1, 2, 3], const_int),
-        (['1', '2', '3'], const_int),
-        ([1, 2, '3'], const_int), # 3 int, 1 str -> int
+        ([1, 2, 3], 'int'),
+        (['1', '2', '3'], 'int'),
+        ([1, 2, '3'], 'int'),
     ])
     def test_dominant_int(self, data, expected_type):
         series = pd.Series(data)
-        # expected_type преобразуем в константу
-        expected_constant = self.const_int if expected_type == self.const_int else expected_type
         result_type, nan_count = check_type_comprehensive(series)
-        assert result_type == expected_constant
+        assert result_type == getattr(self, f"const_{expected_type}")
         assert nan_count == 0
 
     # Тест: Серия с преобладающим типом - float
     @pytest.mark.parametrize("data, expected_type", [
-        ([1.1, 2.2, 3.3], const_float),
-        (['1.1', '2.2', '3.3'], const_float),
-        ([1.1, 2, '3.3'], const_float), # 2 float (1.1, 3.3), 1 int (2), 1 str -> float
-        ([1, 2, 3.0], const_float), # Смешение int и float -> float
-        (['1e10', '2.5', '3'], const_float), # Научная нотация
+        ([1.1, 2.2, 3.3], 'float'),
+        (['1.1', '2.2', '3.3'], 'float'),
+        ([1.1, 2, '3.3'], 'float'),
+        ([1, 2, 3.0], 'float'),
+        (['1e10', '2.5', '3'], 'float'),
     ])
     def test_dominant_float(self, data, expected_type):
         series = pd.Series(data)
-        # expected_type преобразуем в константу
-        expected_constant = self.const_float if expected_type == self.const_float else expected_type # Здесь только 'float'
         result_type, nan_count = check_type_comprehensive(series)
-        assert result_type == expected_constant
+        assert result_type == getattr(self, f"const_{expected_type}")
         assert nan_count == 0
 
     # Тест: Приоритет float над int
     def test_float_priority_over_int(self):
-        series = pd.Series([1, 2, 3.0]) # int и float
+        series = pd.Series([1, 2, 3.0])
         result_type, nan_count = check_type_comprehensive(series)
         assert result_type == self.const_float
         assert nan_count == 0
 
     # Тест: Серия с преобладающим типом - bool
     @pytest.mark.parametrize("data, expected_type", [
-        ([True, False, True], const_bool),
-        (['true', 'false', 'True'], const_bool),
-        (['yes', 'no', 'YES'], const_bool),
+        ([True, False, True], 'bool'),
+        (['true', 'false', 'True'], 'bool'),
+        (['yes', 'no', 'YES'], 'bool'),
     ])
     def test_dominant_bool(self, data, expected_type):
         series = pd.Series(data)
-        # expected_type преобразуем в константу
-        expected_constant = self.const_bool if expected_type == self.const_bool else expected_type # Здесь только 'bool'
         result_type, nan_count = check_type_comprehensive(series)
-        assert result_type == expected_constant
+        assert result_type == getattr(self, f"const_{expected_type}")
         assert nan_count == 0
 
     # Тест: Серия с преобладающим типом - str
@@ -145,11 +140,6 @@ class TestCheckTypeComprehensive:
     def test_dominant_time(self):
         series = pd.Series(['12:00', '14:30:45', '23:59:59.999'])
         result_type, nan_count = check_type_comprehensive(series)
-        # Проверим, что хотя бы один из них распознан как время
-        # В текущей логике time_milliseconds будет первым, кто сработает на '23:59:59.999'
-        # Но time_patterns не проверяют pd.to_datetime. Они просто match.
-        # time_basic ('12:00') match, time_seconds ('14:30:45') match, time_milliseconds ('23:59:59.999') match
-        # Все три распознаются как 'time'.
         assert result_type == self.const_time
         assert nan_count == 0
 
@@ -157,45 +147,250 @@ class TestCheckTypeComprehensive:
     def test_dominant_datetime(self):
         series = pd.Series(['2023-01-01 12:00:00', '2024-12-31T14:30:45'])
         result_type, nan_count = check_type_comprehensive(series)
-        # datetime_iso и datetime_common проверяют pd.to_datetime.
-        # datetime более специфичен, проверяется первым.
         assert result_type == self.const_datetime
         assert nan_count == 0
 
     # Тест: Смешанные типы - проверка выбора наиболее частого
     def test_mixed_types_most_frequent(self):
-        # 4 int, 3 str
         series = pd.Series([1, 2, 3, 4, 'text', 'text', 'text'])
         result_type, nan_count = check_type_comprehensive(series)
-        # Числа 1,2,3,4 -> 4 'int'. Слова 'text' -> 3 'str'.
-        # 'int' встречается чаще.
         assert result_type == self.const_int
         assert nan_count == 0
 
     # Тест: Смешанные типы с NaN
     def test_mixed_types_with_nan(self):
-        series = pd.Series([1, 2, 'text', 'text', np.nan, pd.NA])
+        series = pd.Series([1, 2, 3, 'text', 'text', np.nan, pd.NA])
         result_type, nan_count = check_type_comprehensive(series)
-        # 2 int, 2 str, 2 nan
-        # 'int' и 'str' равны. Берется первый по порядку, который чаще - int.
         assert result_type == self.const_int
         assert nan_count == 2
 
 
+# --- Тесты для новых форматов данных ---
+class TestNewFormats(TestConstants):
+    # Тест: Пробелы вокруг значений
+    # Тесты для пробелов вокруг значений
+    def test_spaces_around_int(self):
+        """Тест пробелов вокруг целых чисел"""
+        test_cases = [
+            ("  -5  ", self.const_int),
+            (" +42 ", self.const_int),
+            ("  100  ", self.const_int),
+            ("  -100  ", self.const_int),
+            ("  +100  ", self.const_int),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    def test_spaces_around_float(self):
+        """Тест пробелов вокруг чисел с плавающей точкой"""
+        test_cases = [
+            ("  3.14  ", self.const_float),
+            ("  .5  ", self.const_float),
+            ("  -3.14  ", self.const_float),
+            ("  +3.14  ", self.const_float),
+            ("  0.0  ", self.const_float),
+            ("  42.  ", self.const_float),  # Неполный float
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    def test_spaces_around_bool(self):
+        """Тест пробелов вокруг булевых значений"""
+        test_cases = [
+            ("  true  ", self.const_bool),
+            ("  FALSE  ", self.const_bool),
+            ("  yes  ", self.const_bool),
+            ("  NO  ", self.const_bool),
+            ("  да  ", self.const_bool),
+            ("  нет  ", self.const_bool),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    def test_spaces_around_date(self):
+        """Тест пробелов вокруг дат"""
+        test_cases = [
+            ("  2023-12-31  ", self.const_date),
+            ("  31.12.2023  ", self.const_date),
+            ("  12/31/2023  ", self.const_date),
+            ("  2024-01-01  ", self.const_date),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    def test_spaces_around_time(self):
+        """Тест пробелов вокруг времени"""
+        test_cases = [
+            ("  23:59  ", self.const_time),
+            ("  12:30:45  ", self.const_time),
+            ("  09:00  ", self.const_time),
+            ("  23:59:59.999  ", self.const_time),
+            ("  11:30 AM  ", self.const_time),
+            ("  9:5:1  ", self.const_time),  # Без ведущих нулей
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Европейский формат с запятыми
+    def test_european_decimal_format(self):
+        test_cases = [
+            ("3,14", self.const_float),
+            ("123,45", self.const_float),
+            ("0,5", self.const_float),
+            ("1.000,50", self.const_float),
+            ("1 000,50", self.const_float),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Символы валюты и текст
+    def test_currency_and_text(self):
+        test_cases = [
+            ("$500", self.const_int),
+            ("€250", self.const_int),
+            ("500 руб.", self.const_int),
+            ("42 шт.", self.const_int),
+            ("$19.99", self.const_float),
+            ("100.50 $", self.const_float),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Неполные float значения
+    def test_incomplete_floats(self):
+        test_cases = [
+            ("42.", self.const_float),
+            (".5", self.const_float),
+            ("-42.", self.const_float),
+            ("+100.", self.const_float),
+            ("0.", self.const_float),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Даты с буквенными месяцами
+    def test_dates_with_month_names(self):
+        test_cases = [
+            ("31-Dec-2023", self.const_date),
+            ("15-Jan-2024", self.const_date),
+            ("01-December-2023", self.const_date),
+            ("Dec 31, 2023", self.const_date),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Время без ведущих нулей
+    def test_time_without_leading_zeros(self):
+        test_cases = [
+            ("9:5", self.const_time),
+            ("9:5:1", self.const_time),
+            ("23:9:5", self.const_time),
+            ("9:5 AM", self.const_time),
+            ("9:05:1 PM", self.const_time),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Смешанные серии с новыми форматами
+    def test_mixed_series_with_new_formats(self):
+        # Серия с разными форматами чисел
+        series1 = pd.Series(["1,000", "2 000", "3,000.50", "4 000,50"])
+        result_type, nan_count = check_type_comprehensive(series1)
+        assert result_type == self.const_float
+        assert nan_count == 0
+
+        # Серия с датами разных форматов
+        series2 = pd.Series(["2023-12-31", "31-Dec-2023", "12/31/2023"])
+        result_type, nan_count = check_type_comprehensive(series2)
+        assert result_type == self.const_date
+        assert nan_count == 0
+
+        # Серия с булевыми значениями разных форматов
+        series3 = pd.Series(["true", "yes", "1", "[x]", "false", "no", "0", "[ ]"])
+        result_type, nan_count = check_type_comprehensive(series3)
+        assert result_type == self.const_bool
+        assert nan_count == 0
+
+    # Тест: Отрицательные числа в скобках (финансовый формат)
+    def test_parentheses_for_negative(self):
+        test_cases = [
+            ("(125)", self.const_int),
+            ("(1,000)", self.const_int),
+            ("(1.000,50)", self.const_float),
+            ("(500.00)", self.const_float),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Научная нотация с дополнительными символами
+    def test_scientific_notation_variants(self):
+        test_cases = [
+            ("1.23e-4", self.const_float),
+            ("5E+10", self.const_float),
+            ("1e3", self.const_float),
+            ("-2.5e-2", self.const_float),
+            ("+3.14E5", self.const_float),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+            assert nan_count == 0
+
+    # Тест: Граничные случаи и edge cases
+    def test_edge_cases(self):
+        test_cases = [
+            ("", self.const_None),
+            ("   ", self.const_None),
+            ("NaN", self.const_str),
+            ("null", self.const_str),
+            ("N/A", self.const_str),
+            ("-", self.const_bool),
+            ("+", self.const_bool),
+        ]
+
+        for value, expected_type in test_cases:
+            result_type, nan_count = check_type_comprehensive(value)
+            assert result_type == expected_type, f"Failed for '{value}': got {result_type}, expected {expected_type}"
+
+
 # --- Тесты для analyze_dataset_parallel и вспомогательных функций ---
-
-class TestAnalyzeDatasetParallel:
-    # Используем константы из TestCheckTypeComprehensive
-    const_None = 'None'
-    const_int = 'int'
-    const_float = 'float'
-    const_bool = 'bool'
-    const_str = 'str'
-    const_date = 'date'
-
+class TestAnalyzeDatasetParallel(TestConstants):
     # Тест: analyze_dataset_parallel с простым DataFrame
     def test_analyze_dataset_parallel_basic(self):
-        # Создаем DataFrame как если бы у него был атрибут column_names
         df_data = {
             'col_int': [1, 2, 3],
             'col_str': ['a', 'b', 'c'],
@@ -203,8 +398,6 @@ class TestAnalyzeDatasetParallel:
             'col_bool': [True, False, True]
         }
         df = pd.DataFrame(df_data)
-        # Вручную добавляем атрибут, если функция его ожидает
-        df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df, max_workers=2)
 
@@ -219,20 +412,16 @@ class TestAnalyzeDatasetParallel:
     # Тест: analyze_dataset_parallel с NaN
     def test_analyze_dataset_parallel_with_nan(self):
         df_data = {
-            'col_with_nan': [1, 2, None],  # -> pandas создаст float64 Series: [1.0, 2.0, nan]
-            'col_all_nan': [None, None, None]  # -> [nan, nan, nan]
+            'col_with_nan': [1, 2, None],
+            'col_all_nan': [None, None, None]
         }
         df = pd.DataFrame(df_data)
-        df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df)
 
-        # Исправленные ожидания:
-        # col_with_nan: pandas.Series([1, 2, None]) -> dtype=float64 -> значения [1.0, 2.0, nan] -> ('float', 1)
-        # col_all_nan: pandas.Series([None, None, None]) -> dtype=object -> значения [nan, nan, nan] -> ('None', 3)
         expected_results = {
-            'col_with_nan': (self.const_float, 1),  # 2 float (1.0, 2.0), 1 nan (из-за None)
-            'col_all_nan': (self.const_None, 3)  # 3 nan
+            'col_with_nan': (self.const_float, 1),
+            'col_all_nan': (self.const_None, 3)
         }
         assert results == expected_results
 
@@ -246,15 +435,12 @@ class TestAnalyzeDatasetParallel:
         column_name, result = process_column_parallel('col_test', df)
 
         assert column_name == 'col_test'
-        assert result == (self.const_float, 0) # int и float -> float
+        assert result == (self.const_float, 0)
 
     # Тест: analyze_dataset_parallel с пустым DataFrame
     def test_analyze_dataset_parallel_empty(self):
         df = pd.DataFrame()
-        df.column_names = df.columns.tolist() # []
-
         results = analyze_dataset_parallel(df)
-
         assert results == {}
 
     # Тест: analyze_dataset_parallel с max_workers=None
@@ -264,113 +450,117 @@ class TestAnalyzeDatasetParallel:
             'col2': ['a', 'b']
         }
         df = pd.DataFrame(df_data)
-        df.column_names = df.columns.tolist()
 
-        results = analyze_dataset_parallel(df, max_workers=None) # Должно работать
-
+        results = analyze_dataset_parallel(df, max_workers=None)
         expected_results = {
             'col1': (self.const_int, 0),
             'col2': (self.const_str, 0)
         }
         assert results == expected_results
 
-# --- Тесты, имитирующие реальные датасеты ---
+    # Тест: Комплексный DataFrame с новыми форматами
+    def test_dataframe_with_new_formats(self):
+        df_data = {
+            'int_with_spaces': ["  5  ", " -10 ", " +42 "],
+            'float_european': ["3,14", "1.000,50", "0,5"],
+            'currency': ["$500", "€250.75", "100 руб."],
+            'dates_varied': ["2023-12-31", "31-Dec-2023", "12/31/2023"],
+            'time_varied': ["23:59", "9:5:1", "11:30 AM"],
+        }
 
+        df = pd.DataFrame(df_data)
+        results = analyze_dataset_parallel(df, max_workers=2)
+
+        expected_types = {
+            'int_with_spaces': (self.const_int, 0),
+            'float_european': (self.const_float, 0),
+            'currency': (self.const_float, 0),
+            'dates_varied': (self.const_date, 0),
+            'time_varied': (self.const_time, 0),
+        }
+
+        for col, expected in expected_types.items():
+            assert col in results, f"Column {col} not in results"
+            result_type, nan_count = results[col]
+            expected_type, expected_nan = expected
+            assert result_type == expected_type, f"Column {col}: got {result_type}, expected {expected_type}"
+            assert nan_count == expected_nan
+
+
+# --- Тесты для реалистичных датасетов ---
 class TestRealisticDatasets:
-    # Используем константы из TestCheckTypeComprehensive
-    const_None = 'None'
-    const_int = 'int'
-    const_float = 'float'
-    const_bool = 'bool'
-    const_str = 'str'
-    const_date = 'date'
 
     def test_analyze_pl_march_2021_like(self):
-        # В реальных условиях нужно использовать Mock или загружать тестовый файл
-        # Здесь предполагается, что файл существует и корректно читается.
-        try:
-            df = pd.read_csv('P  L March 2021.csv')
-        except FileNotFoundError:
-            # Если файл не найден, можно пропустить тест или использовать фиктивные данные
-            pytest.skip("Test file 'P  L March 2021.csv' not found.")
-            return
 
+        df = pd.read_csv('P  L March 2021.csv')
         df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df)
 
         # Проверяем ожидаемые типы
-        assert results['Category'][0] == self.const_str
-        assert results['Sku'][0] == self.const_str
-        assert results['Catalog'][0] == self.const_str
-        assert results['Weight'][0] == self.const_float
-        assert results['TP 1'][0] == self.const_float
-        assert results['TP 2'][0] == self.const_float
-        assert results['MRP Old'][0] == self.const_float
-        assert results['Final MRP Old'][0] == self.const_float
-        assert results['Ajio MRP'][0] == self.const_float
-        assert results['Amazon MRP'][0] == self.const_float
-        assert results['Amazon FBA MRP'][0] == self.const_float
-        assert results['Flipkart MRP'][0] == self.const_float
-        assert results['Limeroad MRP'][0] == self.const_float
-        assert results['Myntra MRP'][0] == self.const_float
-        assert results['Paytm MRP'][0] == self.const_float
-        assert results['Snapdeal MRP'][0] == self.const_float
+        assert results['Category'][0] == 'str'
+        assert results['Sku'][0] == 'str'
+        assert results['Catalog'][0] == 'str'
+        assert results['Weight'][0] == 'float'
+        assert results['TP 1'][0] == 'float'
+        assert results['TP 2'][0] == 'float'
+        assert results['MRP Old'][0] == 'float'
+        assert results['Final MRP Old'][0] == 'float'
+        assert results['Ajio MRP'][0] == 'float'
+        assert results['Amazon MRP'][0] == 'float'
+        assert results['Amazon FBA MRP'][0] == 'float'
+        assert results['Flipkart MRP'][0] == 'float'
+        assert results['Limeroad MRP'][0] == 'float'
+        assert results['Myntra MRP'][0] == 'float'
+        assert results['Paytm MRP'][0] == 'float'
+        assert results['Snapdeal MRP'][0] == 'float'
 
     def test_analyze_may_2022_like(self):
         """Тест, имитирующий May-2022.csv"""
-        try:
-            df = pd.read_csv('May-2022.csv')
-        except FileNotFoundError:
-            pytest.skip("Test file 'May-2022.csv' not found.")
-            return
-
+        # Создаем данные, похожие на описанные в тесте
+        df = pd.read_csv('May-2022.csv')
         df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df)
 
-        assert results['Sku'][0] == self.const_str
-        assert results['Catalog'][0] == self.const_str
-        assert results['Category'][0] == self.const_str
-        assert results['Weight'][0] == self.const_float
-        assert results['MRP Old'][0] == self.const_float
-        assert results['Final MRP Old'][0] == self.const_float
-        assert results['Ajio MRP'][0] == self.const_float
-        assert results['Amazon MRP'][0] == self.const_float
-        assert results['Amazon FBA MRP'][0] == self.const_float
-        assert results['Flipkart MRP'][0] == self.const_float
-        assert results['Limeroad MRP'][0] == self.const_float
-        assert results['Myntra MRP'][0] == self.const_float
-        assert results['Paytm MRP'][0] == self.const_float
-        assert results['Snapdeal MRP'][0] == self.const_float
-        assert results['MRP Old'][0] == self.const_float  # Предполагая, что 'TP 1 & TP 2 MRP Old' соответствует типу 'MRP Old' из нового словаря.
+        assert results['Sku'][0] == 'str'
+        assert results['Catalog'][0] == 'str'
+        assert results['Category'][0] == 'str'
+        assert results['Weight'][0] == 'float'
+        assert results['MRP Old'][0] == 'float'
+        assert results['Final MRP Old'][0] == 'float'
+        assert results['Ajio MRP'][0] == 'float'
+        assert results['Amazon MRP'][0] == 'float'
+        assert results['Amazon FBA MRP'][0] == 'float'
+        assert results['Flipkart MRP'][0] == 'float'
+        assert results['Limeroad MRP'][0] == 'float'
+        assert results['Myntra MRP'][0] == 'float'
+        assert results['Paytm MRP'][0] == 'float'
+        assert results['Snapdeal MRP'][0] == 'float'
+        assert results['MRP Old'][0] == 'float'  # Предполагая, что 'TP 1 & TP 2 MRP Old' соответствует типу 'MRP Old' из нового словаря.
 
     def test_analyze_amazon_sale_report_like(self):
         """Тест, имитирующий Amazon Sale Report.csv"""
-        try:
-            df = pd.read_csv('Amazon Sale Report.csv')
-        except FileNotFoundError:
-            pytest.skip("Test file 'Amazon Sale Report.csv' not found.")
-            return
-
+        # Создаем данные, похожие на описанные в тесте
+        df = pd.read_csv('Amazon Sale Report.csv')
         df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df)
 
         # Проверяем ожидаемые типы
-        assert results['Category'][0] == self.const_str
-        assert results['Size'][0] == self.const_str
-        assert results['Date'][0] == self.const_date
-        assert results['Status'][0] == self.const_str
-        assert results['Fulfilment'][0] == self.const_str
-        assert results['Style'][0] == self.const_str
-        assert results['SKU'][0] == self.const_str
-        assert results['ASIN'][0] == self.const_str
-        assert results['Courier Status'][0] == self.const_str
-        assert results['Qty'][0] == self.const_float
-        assert results['Amount'][0] == self.const_float
-        assert results['B2B'][0] == self.const_bool
-        assert results['currency'][0] == self.const_str
+        assert results['Category'][0] == 'str'
+        assert results['Size'][0] == 'str'
+        assert results['Date'][0] == 'date'
+        assert results['Status'][0] == 'str'
+        assert results['Fulfilment'][0] == 'str'
+        assert results['Style'][0] == 'str'
+        assert results['SKU'][0] == 'str'
+        assert results['ASIN'][0] == 'str'
+        assert results['Courier Status'][0] == 'str'
+        assert results['Qty'][0] == 'float'
+        assert results['Amount'][0] == 'float'
+        assert results['B2B'][0] == 'bool'
+        assert results['currency'][0] == 'str'
 
     def test_realistic_dataset_with_nans(self):
         """Тест, имитирующий датасет с пропусками, как в реальных данных"""
@@ -380,13 +570,13 @@ class TestRealisticDatasets:
             'Qty': [1, 0, np.nan],              # int с NaN
             'B2B': [True, np.nan, False],       # bool с NaN
         }
-        df = pd.DataFrame(df_data)
+        df = pd.DataFrame(df_data, dtype=object)
         df.column_names = df.columns.tolist()
 
         results = analyze_dataset_parallel(df)
 
         # Проверяем типы и количество NaN
-        assert results['Sku'] == (self.const_str, 1) # 2 str, 1 nan
-        assert results['Weight'] == (self.const_float, 1) # 2 float, 1 nan
-        assert results['Qty'] == (self.const_float, 1) # 2 int, 1 nan
-        assert results['B2B'] == (self.const_bool, 1) # 2 bool, 1 nan
+        assert results['Sku'] == ('str', 1) # 2 str, 1 nan
+        assert results['Weight'] == ('float', 1) # 2 float, 1 nan
+        assert results['Qty'] == ('int', 1) # 2 int, 1 nan
+        assert results['B2B'] == ('bool', 1) # 2 bool, 1 nan
