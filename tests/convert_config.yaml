@@ -1,0 +1,89 @@
+semtab_html_elements_semantic_datatype_exampples_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: html
+  model_base_dir: ../utils/doduo/
+  include_data_types: True
+  include_semantic_types: True
+  include_examples: True
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+  
+semtab_xml_attributes_semantic_datatype_exampples_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: xml
+  param_position: attributes
+  model_base_dir: ../utils/doduo/
+  include_data_types: True
+  include_semantic_types: True
+  include_examples: True
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+  
+semtab_xml_elements_semantic_datatype_exampples_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: xml
+  param_position: elements
+  model_base_dir: ../utils/doduo/
+  include_data_types: True
+  include_semantic_types: True
+  include_examples: True
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+
+semtab_xml_elements_datatype_exampples_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: xml
+  param_position: elements
+  model_base_dir: ../utils/doduo/
+  include_data_types: True
+  include_semantic_types: False
+  include_examples: True
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+
+semtab_xml_elements_exampples_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: xml
+  param_position: elements
+  model_base_dir: ../utils/doduo/
+  include_data_types: False
+  include_semantic_types: False
+  include_examples: True
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+
+semtab_xml_elements_description_top1_tresh50:
+  model_type: viznet
+  device: cuda
+  serialization_type: semtab
+  notation: xml
+  param_position: elements
+  model_base_dir: ../utils/doduo/
+  include_data_types: False
+  include_semantic_types: False
+  include_examples: False
+  examples_count: 3
+  max_workers: 17
+  top_k: 1
+  threshold: 0.5
+
