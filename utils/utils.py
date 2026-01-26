@@ -4,12 +4,22 @@ import inspect
 import xml.etree.ElementTree as ET
 import json
 import numpy as np
-from doduo.doduo import Doduo
+from utils.doduo.doduo import Doduo
 import argparse
 import re
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+import yaml
 
+def load_config(config_file_path):
+    with open(config_file_path, 'r') as stream:
+        try:
+            # Use safe_load for security
+            config = yaml.safe_load(stream)
+            return config
+        except yaml.YAMLError as exc:
+            print(exc)
+            
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -30,17 +40,26 @@ def get_kwargs(kwargs: Dict[str,Any],func: Callable) -> Dict[str,Any]:
     sig = inspect.signature(func)
     return {key:value for key,value in kwargs.items() if key in sig.parameters}
     
-def make_semantic_columns_name(table: DataFrame, model: str = "doduo--viznet", top_k: int = 1, device: str = 'cpu',
-                               basedir: str = './doduo', threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
-    proj, model_type = model.split("--")
-    if proj == "doduo":
-        model = Doduo(argparse.Namespace(**{'model': model_type, 'device': device}), basedir=basedir)
-        columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold)
-        semantic_columns_name = []
-        for col_id, col_name in enumerate(table.columns):
-            sem_col_types = get_item(columns_annotations, col_id)
-            sem_col_types = sem_col_types if sem_col_types is not None else [(None, None)]
-            semantic_columns_name.append((col_name, {col_types[0]: col_types[1] for col_types in sem_col_types}))
+def serialize_table_to_tapex_format(df:pd.DataFrame) -> str:
+    head_pattern = " col : "
+    row_pattern = " row {num} : "
+    coll_delimetr = " | "
+    
+    lin_table = head_pattern+coll_delimetr.join(df.columns)
+    for i,row in df.iterrows():
+        #print(row_pattern.format(num=i+1))
+        lin_table+=row_pattern.format(num=i+1)+coll_delimetr.join(str(r) for r in row.values)
+    
+    return lin_table
+
+def make_semantic_columns_name(table: DataFrame, model: Doduo = None, top_k: int = 1,
+                               threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
+    columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold)
+    semantic_columns_name = []
+    for col_id, col_name in enumerate(table.columns):
+        sem_col_types = get_item(columns_annotations, col_id)
+        sem_col_types = sem_col_types if sem_col_types is not None else [(None, None)]
+        semantic_columns_name.append((col_name, {col_types[0]: col_types[1] for col_types in sem_col_types}))
 
     return semantic_columns_name
 
@@ -194,8 +213,7 @@ def analyze_dataset_parallel(dataset: Union[Dict, pd.DataFrame], max_workers: in
             results[column_name] = column_result
 
     return results
-
-def serialize_table(table: pd.DataFrame,include_data_types: bool = True,include_semantic_types: bool = True,include_examples: bool = True,
+def get_elements_xml_serialization(table: pd.DataFrame,include_data_types: bool = True,include_semantic_types: bool = True, include_examples: bool = True,
                     examples_count: int = 3, description: str = "",**kwargs) -> str:
     table_xml = ET.Element("TABLE")
     data_types = None
@@ -218,13 +236,96 @@ def serialize_table(table: pd.DataFrame,include_data_types: bool = True,include_
         
         if include_data_types:
             data_t = ET.SubElement(head, "DATA_TYPE")
-            print('data_type',column_name,data_types[column_name][0])
+            #print('data_type',column_name,data_types[column_name][0])
             data_t.text = json.dumps(data_types[column_name][0])
             data_t_none = ET.SubElement(head, "HAS_NONE")
-            print('data_none',column_name,data_types[column_name][1])
+            #print('data_none',column_name,data_types[column_name][1])
             data_t_none.text = '1' if data_types[column_name][1] else '0'
         if include_examples:
             example = ET.SubElement(head, "EXAMPLES")
-            example.text = json.dumps(table[column_name].sample(examples_count).to_list(),cls=NumpyEncoder)
+            column_size = table[column_name].shape[0]
+            example.text = json.dumps(table[column_name].sample(examples_count).to_list() if column_size> examples_count else table[column_name].to_list(),cls=NumpyEncoder)
         
     return ET.tostring(table_xml, encoding='unicode')
+
+def get_attributes_xml_serialization(table: pd.DataFrame,include_data_types: bool = True,include_semantic_types: bool = True, include_examples: bool = True,
+                    examples_count: int = 3, description: str = "",**kwargs) -> str:
+    table_xml = ET.Element("TABLE")
+    data_types = None
+    sem_types = None
+    if description != '':
+        table_xml.set("DESCRIPTION",description)
+    if include_data_types:
+        data_types = analyze_dataset_parallel(table,**get_kwargs(kwargs,analyze_dataset_parallel))
+    if include_semantic_types:
+        sem_types = make_semantic_columns_name(table,**get_kwargs(kwargs,make_semantic_columns_name))
+    for col_idx, column_name in enumerate(table.columns):
+        head =  ET.SubElement(table_xml, "HEADER")
+        head.set("NAME",column_name)
+        
+        if include_semantic_types:
+            head.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2))]) 
+                                                 for type_,prop in sem_types[col_idx][1].items()]))
+        
+        if include_data_types:
+            head.set("DATA_TYPE",json.dumps(data_types[column_name][0]))
+            head.set("HAS_NONE",'1' if data_types[column_name][1] else '0')
+            
+        if include_examples:
+            column_size = table[column_name].shape[0]
+            head.set("EXAMPLES",json.dumps(table[column_name].sample(examples_count).to_list() if column_size> examples_count else table[column_name].to_list(),cls=NumpyEncoder))
+        
+    return ET.tostring(table_xml, encoding='unicode')
+
+def get_html_serialization(table: pd.DataFrame,include_data_types: bool = True,include_semantic_types: bool = True, include_examples: bool = True,
+                    examples_count: int = 3, description: str = "",**kwargs) -> str:
+    table_html = ET.Element("table")
+    data_types = None
+    sem_types = None
+    if description != '':
+        caption = ET.SubElement(table_html, "caption")
+        caption.text = description
+    thead = ET.SubElement(table_html, "thead")
+    tr = ET.SubElement(thead, "tr")
+    if include_data_types:
+        data_types = analyze_dataset_parallel(table,**get_kwargs(kwargs,analyze_dataset_parallel))
+    if include_semantic_types:
+        sem_types = make_semantic_columns_name(table,**get_kwargs(kwargs,make_semantic_columns_name))
+    for col_idx, column_name in enumerate(table.columns):
+        th =  ET.SubElement(tr, "th")
+        th.text = column_name
+        
+        if include_semantic_types:
+            th.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2))]) 
+                                                 for type_,prop in sem_types[col_idx][1].items()]))
+        
+        if include_data_types:
+            th.set("DATA_TYPE",json.dumps(data_types[column_name][0]))
+            th.set("HAS_NONE",'1' if data_types[column_name][1] else '0')
+            
+        if include_examples:
+            column_size = table[column_name].shape[0]
+            th.set("EXAMPLES",json.dumps(table[column_name].sample(examples_count).to_list() if column_size> examples_count else table[column_name].to_list(),cls=NumpyEncoder))
+        
+    return ET.tostring(table_html, encoding='unicode')
+    
+def semtab_serialize_table(table: pd.DataFrame, notation: str = 'xml', param_position: str = 'elements', **kwargs) -> str:
+    
+    match notation:
+        case 'xml':
+            match param_position:
+                case 'elements':
+                    return get_elements_xml_serialization(table,**kwargs)
+                case 'attributes':
+                    return get_attributes_xml_serialization(table,**kwargs)
+        case 'html':
+            return get_html_serialization(table,**kwargs)
+
+def serialize_table(table: pd.DataFrame, serialization_type: str = 'semtab', **kwargs) -> str:
+    match serialization_type:
+        case 'semtab':
+            return semtab_serialize_table(table,**kwargs)
+        case 'nlsep':
+            return serialize_table_to_tapex_format(table)
+        case 'space':
+            return table.to_string()

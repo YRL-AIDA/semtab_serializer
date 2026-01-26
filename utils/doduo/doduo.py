@@ -14,8 +14,8 @@ import transformers
 from transformers import BertTokenizer, BertConfig
 #from modelscope import AutoTokenizer
 #from modelscope.models.nlp.bert.backbone import  BertConfig
-from doduo.dataset import collate_fn
-from doduo.models import BertForMultiOutputClassification
+from .dataset import collate_fn
+from .models import BertForMultiOutputClassification
 from collections import OrderedDict
 
 sato_coltypes = [
@@ -41,7 +41,6 @@ class DFColTypeTablewiseDataset(Dataset):
                  device: torch.device = None):
         if device is None:
             device = torch.device('cpu')
-
         data_list = []
         for i in range(len(df.columns)):
             data_list.append([
@@ -51,14 +50,75 @@ class DFColTypeTablewiseDataset(Dataset):
             ])
         self.df = pd.DataFrame(data_list,
                                columns=["table_id", "label_ids", "data"])
-
+        print(self.df)
         # For learning curve
         num_tables = len(self.df.groupby("table_id"))
-
+        print(num_tables)
         data_list = []
         for i, (index, group_df) in enumerate(self.df.groupby("table_id")):
             token_ids_list = group_df["data"].apply(lambda x: tokenizer.encode(
-                x, add_special_tokens=True, max_length=max_length + 2)).tolist(
+                x, add_special_tokens=True, max_length=max_length + 2,truncation=True)).tolist(
+                )
+            token_ids = torch.LongTensor(reduce(operator.add,
+                                                token_ids_list)).to(device)
+            cls_index_list = [0] + np.cumsum(
+                np.array([len(x) for x in token_ids_list])).tolist()[:-1]
+            for cls_index in cls_index_list:
+                assert token_ids[
+                    cls_index] == tokenizer.cls_token_id, "cls_indexes validation"
+            cls_indexes = torch.LongTensor(cls_index_list).to(device)
+            class_ids = torch.LongTensor(
+                group_df["label_ids"].tolist()).to(device)
+            data_list.append(
+                [index,
+                 len(group_df), token_ids, class_ids, cls_indexes])
+
+        self.table_df = pd.DataFrame(data_list,
+                                     columns=[
+                                         "table_id", "num_col", "data_tensor",
+                                         "label_tensor", "cls_indexes"
+                                     ])
+
+    def __len__(self):
+        return len(self.table_df)
+
+    def __getitem__(self, idx):
+        return {
+            "data": self.table_df.iloc[idx]["data_tensor"],
+            "label": self.table_df.iloc[idx]["label_tensor"]
+        }
+
+class DFColTypeTablewiseMultiDataset(Dataset):
+
+    def __init__(self,
+                 df: pd.DataFrame,
+                 tokenizer: transformers.PreTrainedTokenizer,
+                 max_length: int = 32,
+                 max_model_lenght : int = 512,
+                 device: torch.device = None):
+        if device is None:
+            device = torch.device('cpu')
+        max_column = int(max_model_lenght/(max_length+2))
+        print('max_column',max_column)
+        #if len(df.columns)>max_column:
+            
+        data_list = []
+        for i in range(len(df.columns)):
+            data_list.append([
+                1,  # Dummy table ID (fixed)
+                0,  # Dummy label ID (fixed)
+                " ".join([str(x) for x in df.iloc[:, i].dropna().tolist()])
+            ])
+        self.df = pd.DataFrame(data_list,
+                               columns=["table_id", "label_ids", "data"])
+        print(self.df)
+        # For learning curve
+        num_tables = len(self.df.groupby("table_id"))
+        print(num_tables)
+        data_list = []
+        for i, (index, group_df) in enumerate(self.df.groupby("table_id")):
+            token_ids_list = group_df["data"].apply(lambda x: tokenizer.encode(
+                x, add_special_tokens=True, max_length=max_length + 2,truncation=True)).tolist(
                 )
             token_ids = torch.LongTensor(reduce(operator.add,
                                                 token_ids_list)).to(device)
@@ -156,8 +216,7 @@ class Doduo:
     def annotate_columns(self, df: pd.DataFrame, top_k: int= 1, threshold: float = 0.5)-> List[List[Tuple[str,float]]]:
         
         ## Dataset
-        input_dataset = DFColTypeTablewiseDataset(df, self.tokenizer)
-        print(input_dataset[0])
+        input_dataset = DFColTypeTablewiseDataset(df, self.tokenizer,device=self.device)
         input_dataloader = DataLoader(input_dataset,
                                       batch_size=self.args.batch_size,
                                       collate_fn=collate_fn)
@@ -166,28 +225,13 @@ class Doduo:
         batch = next(iter(input_dataloader))
 
         # 1. Column type
+        print('data',batch["data"].T.shape)
         logits, = self.coltype_model(batch["data"].T)
-
-        outputs = self.coltype_model.bert.encoder(
-            self.coltype_model.bert.embeddings(batch["data"].T),
-            output_attentions=True,
-            output_hidden_states=True)
-        hidden_states = outputs[
-            1]  # 0: word embeddings, -1: last_hidden_states
-        last_hidden_states = outputs.last_hidden_state.squeeze(
-            0)  # SeqLen * DimSize
+        
 
         cls_indexes = torch.nonzero(
             batch["data"].T.squeeze(0) ==
             self.tokenizer.cls_token_id).T.squeeze(0).detach().cpu().numpy()
-
-        emb_list = []
-        for cls_id, cls_index in zip(batch["label"].detach().cpu().numpy(),
-                                     cls_indexes):
-            emb = last_hidden_states[cls_index].squeeze(
-                0).detach().cpu().numpy()  # 768
-            emb_list.append(emb)
-
 
         if len(logits.shape) == 2:
             logits = logits.unsqueeze(0)
@@ -208,22 +252,15 @@ class Doduo:
         probabilities = torch.softmax(filtered_logits, dim=1)
         topk_probs, topk_prob_indices = probabilities.topk(top_k, dim=1)
         
-        print(topk_values, topk_indices)
-        print(topk_probs, topk_prob_indices)
+        #print(topk_values, topk_indices)
+        #print(topk_probs, topk_prob_indices)
         if self.args.model == "viznet":
             coltype_pred_labels = [[(sato_coltypes[idx],prob) 
                                     for prob,idx in zip(col_probs,col_idx) if prob > threshold]
-                                   for col_probs,col_idx in zip(topk_probs.detach().numpy(),topk_prob_indices.detach().numpy())]
+                                   for col_probs,col_idx in zip(topk_probs.detach().cpu().numpy(),topk_prob_indices.detach().cpu().numpy())]
         elif self.args.model == "wikitable":
             coltype_pred_labels = [[(self.coltype_mlb.classes_[idx],prob) 
                                     for prob,idx in zip(col_probs,col_idx) if prob > threshold]
-                                   for col_probs,col_idx in zip(topk_probs.detach().numpy(),topk_prob_indices.detach().numpy())]
-        #coltype_pred = filtered_logits.argmax(1)
-        #if self.args.model == "viznet":
-        #    coltype_pred_labels = [sato_coltypes[x] for x in coltype_pred]
-        #elif self.args.model == "wikitable":
-        #    coltype_pred_labels = [
-        #        self.coltype_mlb.classes_[x] for x in coltype_pred
-        #    ]
+                                   for col_probs,col_idx in zip(topk_probs.detach().cpu().numpy(),topk_prob_indices.detach().cpu().numpy())]
 
         return coltype_pred_labels
