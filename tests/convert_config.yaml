@@ -1,6 +1,6 @@
 semtab_html_elements_semantic_datatype_exampples_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: html
   model_base_dir: ../utils/doduo/
@@ -14,7 +14,7 @@ semtab_html_elements_semantic_datatype_exampples_description_top1_tresh50:
   
 semtab_xml_attributes_semantic_datatype_exampples_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: xml
   param_position: attributes
@@ -29,7 +29,7 @@ semtab_xml_attributes_semantic_datatype_exampples_description_top1_tresh50:
   
 semtab_xml_elements_semantic_datatype_exampples_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: xml
   param_position: elements
@@ -44,7 +44,7 @@ semtab_xml_elements_semantic_datatype_exampples_description_top1_tresh50:
 
 semtab_xml_elements_datatype_exampples_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: xml
   param_position: elements
@@ -59,7 +59,7 @@ semtab_xml_elements_datatype_exampples_description_top1_tresh50:
 
 semtab_xml_elements_exampples_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: xml
   param_position: elements
@@ -74,7 +74,7 @@ semtab_xml_elements_exampples_description_top1_tresh50:
 
 semtab_xml_elements_description_top1_tresh50:
   model_type: viznet
-  device: cuda
+  device: 'cuda:1'
   serialization_type: semtab
   notation: xml
   param_position: elements

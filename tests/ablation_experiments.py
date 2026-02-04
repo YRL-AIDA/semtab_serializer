@@ -253,7 +253,7 @@ def main():
         #if inputdata == outputdata:
          #   shutil.rmtree(inputdata)
         dataset2.save_to_disk(outputdata)
-
+        dataset = dataset2
 
 if __name__ == "__main__":
     #python abation_experiments.py --inputdata tab_fact_test_semtab__html_ablation --outputdata tab_fact_test_semtab_html_ablation_correcring_first --conf-file semtab_html_config_answer.yaml --num_proc 16 > tab_fact_test_html_ablation_log2.txt
