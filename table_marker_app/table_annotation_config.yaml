@@ -1,0 +1,7 @@
+autosave: true
+autosave_interval: 5
+dataset_path: ../tests/tabfact_test_tables
+default_start_index: 0
+hotkeys_enabled: true
+results_file: ../tests/tab_fact_test_mark.csv
+show_debug_info: false
