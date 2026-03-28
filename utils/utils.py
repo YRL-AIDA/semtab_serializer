@@ -10,6 +10,7 @@ import re
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import yaml
+from utils.type_check import analyze_dataset_parallel
 
 def load_config(config_file_path):
     with open(config_file_path, 'r') as stream:
@@ -52,15 +53,16 @@ def serialize_table_to_tapex_format(df:pd.DataFrame) -> str:
     
     return lin_table
 
-def make_semantic_columns_name(table: DataFrame, model: Doduo = None, top_k: int = 1,
-                               threshold: float = 0.5) -> List[Tuple[str, Dict[str, float]]]:
-    columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold)
+def make_semantic_columns_name(table: DataFrame, model: Any = None, top_k: int = 1,
+                               threshold: float = 0.5,add_data=None) -> List[Tuple[str, Dict[str, float]]]:
+    #print(add_data)
+    columns_annotations = model.annotate_columns(table, top_k=top_k, threshold=threshold,add_data = add_data)
     semantic_columns_name = []
     for col_id, col_name in enumerate(table.columns):
         sem_col_types = get_item(columns_annotations, col_id)
         sem_col_types = sem_col_types if sem_col_types is not None else [(None, None)]
         semantic_columns_name.append((col_name, {col_types[0]: col_types[1] for col_types in sem_col_types}))
-
+    #print(semantic_columns_name)
     return semantic_columns_name
 
 
@@ -232,8 +234,8 @@ def get_elements_xml_serialization(table: pd.DataFrame,include_data_types: bool 
         if include_semantic_types:
             sem_t = ET.SubElement(head, "SEMANTIC_TYPE")
             sem_t.text = 'NO TYPE'
-            sem_t.text = " ; ".join([" - ".join([type_,str(round(prop,2))]) for type_,prop in sem_types[col_idx][1].items()])
-        
+            sem_t.text = " ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) for type_,prop in sem_types[col_idx][1].items()])
+            
         if include_data_types:
             data_t = ET.SubElement(head, "DATA_TYPE")
             #print('data_type',column_name,data_types[column_name][0])
@@ -264,9 +266,10 @@ def get_attributes_xml_serialization(table: pd.DataFrame,include_data_types: boo
         head.set("NAME",column_name)
         
         if include_semantic_types:
-            head.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2))]) 
+            #head.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
+             #                                    for type_,prop in sem_types[col_idx][1].items()]))
+            head.set("COLUMN DESCRIPTION"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
                                                  for type_,prop in sem_types[col_idx][1].items()]))
-        
         if include_data_types:
             head.set("DATA_TYPE",json.dumps(data_types[column_name][0]))
             head.set("HAS_NONE",'1' if data_types[column_name][1] else '0')
@@ -296,7 +299,7 @@ def get_html_serialization(table: pd.DataFrame,include_data_types: bool = True,i
         th.text = column_name
         
         if include_semantic_types:
-            th.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2))]) 
+            th.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
                                                  for type_,prop in sem_types[col_idx][1].items()]))
         
         if include_data_types:
