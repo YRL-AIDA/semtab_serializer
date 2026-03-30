@@ -69,7 +69,7 @@ False, and strictly in the following Json Format with a single key "PANDA":
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="deepseek-ai/deepseek-coder-6.7b-instruct")
-    run_name: Optional[str] = field(default="test_run")
+    expr_name: Optional[str] = field(default="test_run")
     lora_rank: int = field(default=16 )
     lora_dropout: float = field(default=0.05)
     
@@ -186,7 +186,7 @@ def main():
     # Set the wandb entity where your project will be logged (generally your team name).
     entity="ivan",
     # Set the wandb project where this run will be logged.
-    project=model_args.run_name,
+    project=model_args.expr_name,
     # Track hyperparameters and run metadata.
     config={
         **model_args,
