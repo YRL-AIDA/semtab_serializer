@@ -245,7 +245,7 @@ def main():
     #    cache_dir=training_args.cache_dir
     #)
     dataset = load_from_disk(data_args.data_path)
-    raw_train_datasets = dataset.get('train',None)
+    raw_train_dataset = dataset.get('train',None)
     raw_eval_dataset = dataset.get('val',None)
 # 2. Магия маскирования промпта (заменяет твой сложный preprocess)
 # Модель не будет учиться генерировать инструкцию, только то, что после "### Response:\n"
