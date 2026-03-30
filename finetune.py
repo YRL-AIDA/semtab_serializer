@@ -165,13 +165,18 @@ class WandbLoggingCallback(TrainerCallback):
 
 # 1. Твоя функция подготовки промпта (немного адаптирован под батчи)
 def formatting_prompts_func(example,table_col_name=''):
-    output_texts = []
+    #output_texts = []
+    #print(example)
     # Важно: example содержит списки, так как SFTTrainer передает батчи
-    for i in range(len(example['statement'])):
-        prompt = build_instruction_prompt(example[table_col_name][i], example['statement'][i])
-        response = f'"PANDA": {example["pandas_code"][i]}\n{EOT_TOKEN}'
-        output_texts.append(prompt + response)
-    return output_texts
+    #for i in range(len(example['statement'])):
+    #    prompt = build_instruction_prompt(example[table_col_name][i], example['statement'][i])
+    #    response = f'"PANDA": {example["pandas_code"][i]}\n{EOT_TOKEN}'
+    #    output_texts.append(prompt + response)
+    #return output_texts
+    return {
+        "prompt": build_instruction_prompt(example[table_col_name], example['statement']),
+         "completion": f'"PANDA": {example["pandas_code"]}\n{EOT_TOKEN}'
+           }
 
 
 
