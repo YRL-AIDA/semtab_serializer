@@ -5,7 +5,7 @@ import wandb
 # Start a new wandb run to track this script
 from transformers import TrainerCallback
 import time
-
+from functools import partial
 
 import torch
 from typing import Any, Dict, List, Union, Optional
@@ -15,6 +15,7 @@ import numpy as np
 from dataclasses import dataclass, field
 import transformers
 from datasets import load_from_disk
+
 IGNORE_INDEX = -100
 EOT_TOKEN = "<|EOT|>"
 
@@ -69,6 +70,9 @@ False, and strictly in the following Json Format with a single key "PANDA":
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="deepseek-ai/deepseek-coder-6.7b-instruct")
     run_name: Optional[str] = field(default="test_run")
+    lora_rank: int = field(default=16 )
+    lora_dropout: float = field(default=0.05)
+    
 
 @dataclass
 class DataArguments:
@@ -85,7 +89,7 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     seed: int = field(default=42, metadata={"help": "Random seed for initialization."})
-    deepspeed: Optional[str] = field(default=None)
+    
 
 
 class CustomCompletionOnlyCollator(DataCollatorForLanguageModeling):
@@ -215,9 +219,9 @@ def main():
     )
     peft_config = LoraConfig(
                         task_type=TaskType.CAUSAL_LM, # Тип задачи
-                        r=16,                         # Ранг матрицы (низкая размерность)
-                        lora_alpha=32,                # Масштабирующий коэффициент (обычно 2x от r)
-                        lora_dropout=0.05,            # Dropout для регуляризации
+                        r=model_args.lora_rank,                         # Ранг матрицы (низкая размерность)
+                        lora_alpha=2*model_args.lora_rank,                # Масштабирующий коэффициент (обычно 2x от r)
+                        lora_dropout=model_args.lora_dropout,            # Dropout для регуляризации
                         bias="none",                  # Обычно bias не обучают
                         target_modules=[              # Куда встраиваем матрицы
                             "q_proj", 
@@ -229,6 +233,7 @@ def main():
                             "down_proj"
                         ],
                     )
+    formatting_prompts_func_loc = partial(formatting_prompts_func,table_col_name=data_args.table_col_name)
     if training_args.local_rank == 0:
         print("Load model from {} over.".format(model_args.model_name_or_path))
 
@@ -259,7 +264,7 @@ def main():
         args=training_args, # Твои аргументы с deepspeed="config.json" работают здесь идеально!
         train_dataset=raw_train_dataset, # Передаешь СЫРОЙ датасет, без .map()
         eval_dataset = raw_eval_dataset,
-        formatting_func=formatting_prompts_func, # Функция, которая склеивает вопрос и ответ
+        formatting_func=formatting_prompts_func_loc, # Функция, которая склеивает вопрос и ответ
         data_collator=collator, # Тот самый умный коллатор
         max_seq_length=training_args.model_max_length, # SFTTrainer сам обрежет длинные тексты
         peft_config=peft_config, # SFTTrainer сам применит LoRA
