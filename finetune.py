@@ -83,7 +83,7 @@ class DataArguments:
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
     optim: str = field(default="adamw_torch")
-    model_max_length: int = field(
+    max_seq_length: int = field(
         default=512,
         metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},
     )
@@ -199,7 +199,7 @@ def main():
     
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        model_max_length=training_args.model_max_length,
+        model_max_length=training_args.max_seq_length,
         padding_side="right",
         use_fast=True,
         trust_remote_code=True
