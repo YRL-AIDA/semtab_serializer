@@ -1,9 +1,8 @@
-from trl import SFTTrainer
+from transformers import Trainer, TrainerCallback # Заменили SFTTrainer на Trainer
 from peft import LoraConfig,TaskType,get_peft_model 
 import wandb
 import optuna
 # Start a new wandb run to track this script
-from transformers import TrainerCallback
 import time
 from functools import partial
 
@@ -222,6 +221,22 @@ def formatting_prompts_func(example,table_col_name=''):
     #return output_texts
     return build_instruction_prompt(example[table_col_name], example['statement'])+ f'"PANDA": {example["pandas_code"]}\n{EOT_TOKEN}'
 
+def preprocess_dataset(examples, tokenizer, table_col_name, max_length):
+    batch_texts = []
+    # Так как мы используем batched=True, examples содержит списки
+    for i in range(len(examples['statement'])):
+        prompt = build_instruction_prompt(examples[table_col_name][i], examples['statement'][i])
+        response = f'"PANDA": {examples["pandas_code"][i]}\n{EOT_TOKEN}'
+        batch_texts.append(prompt + response)
+        
+    # Токенизируем склеенный текст
+    model_inputs = tokenizer(
+        batch_texts,
+        truncation=True,
+        max_length=max_length,
+        padding=False # Паддинг будет делать DataCollator динамически!
+    )
+    return model_inputs
 
 
 def main():
@@ -249,12 +264,11 @@ def main():
 
     if training_args.local_rank == 0:
         print("Load tokenizer from {} over.".format(model_args.model_name_or_path))
+        
 
     
     formatting_prompts_func_loc = partial(formatting_prompts_func,table_col_name=data_args.table_col_name)
-    if training_args.local_rank == 0:
-        print("Load model from {} over.".format(model_args.model_name_or_path))
-
+    
 
     #raw_train_datasets = load_dataset(
     #    'json',
@@ -272,19 +286,36 @@ def main():
         response_template=response_template, 
         tokenizer=tokenizer
     )
+    preprocess_func_with_args = partial(
+        preprocess_dataset, 
+        tokenizer=tokenizer, 
+        table_col_name=data_args.table_col_name,
+        max_length=training_args.max_length
+        )
     
+    if training_args.local_rank == 0:
+        tokenized_train_dataset = raw_train_dataset.map(
+        preprocess_func_with_args,
+        batched=True,
+        remove_columns=raw_train_dataset.column_names, 
+        desc="Running tokenizer on train dataset"
+        )
     
+        tokenized_eval_dataset = raw_eval_dataset.map(
+            preprocess_func_with_args,
+            batched=True,
+            remove_columns=raw_eval_dataset.column_names,
+            desc="Running tokenizer on eval dataset"
+        )
     # 3. Конфиг LoRA (передаем напрямую в Trainer)
-    
     # 4. Инициализация SFTTrainer
-    trainer = SFTTrainer(
+    trainer = Trainer(  # <-- Заменили SFTTrainer на Trainer
         model=None, 
         model_init=model_init,
-        args=training_args, # Твои аргументы с deepspeed="config.json" работают здесь идеально!
-        train_dataset=raw_train_dataset, # Передаешь СЫРОЙ датасет, без .map()
-        eval_dataset = raw_eval_dataset,
-        formatting_func=formatting_prompts_func_loc, # Функция, которая склеивает вопрос и ответ
-        data_collator=collator, # Тот самый умный коллатор
+        args=training_args, 
+        train_dataset=tokenized_train_dataset, # Передаем ТОКЕНИЗИРОВАННЫЙ датасет
+        eval_dataset=tokenized_eval_dataset,   # Передаем ТОКЕНИЗИРОВАННЫЙ датасет
+        data_collator=collator, 
         callbacks=[WandbLoggingCallback(project_name=model_args.expr_name, entity="ivan")]
     )
     best_run = trainer.hyperparameter_search(
