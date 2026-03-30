@@ -279,7 +279,7 @@ def main():
     # 4. Инициализация SFTTrainer
     trainer = SFTTrainer(
         model=None, 
-        model_init=model_init_with_args,
+        model_init=model_init,
         args=training_args, # Твои аргументы с deepspeed="config.json" работают здесь идеально!
         train_dataset=raw_train_dataset, # Передаешь СЫРОЙ датасет, без .map()
         eval_dataset = raw_eval_dataset,
