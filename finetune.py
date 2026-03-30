@@ -85,6 +85,7 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},
     )
     seed: int = field(default=42, metadata={"help": "Random seed for initialization."})
+    deepspeed: Optional[str] = field(default=None)
 
 
 class CustomCompletionOnlyCollator(DataCollatorForLanguageModeling):
