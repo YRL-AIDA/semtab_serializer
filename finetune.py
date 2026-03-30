@@ -64,7 +64,7 @@ False, and strictly in the following Json Format with a single key "PANDA":
 ### Query
 {query}
 ### Response:
-""".format(instruction.strip()).lstrip()
+""".format(table=table, query=query).lstrip()
 
 @dataclass
 class ModelArguments:
