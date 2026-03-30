@@ -266,7 +266,6 @@ def main():
         eval_dataset = raw_eval_dataset,
         formatting_func=formatting_prompts_func_loc, # Функция, которая склеивает вопрос и ответ
         data_collator=collator, # Тот самый умный коллатор
-        max_seq_length=training_args.model_max_length, # SFTTrainer сам обрежет длинные тексты
         peft_config=peft_config, # SFTTrainer сам применит LoRA
         callbacks=[WandbLoggingCallback()]
     )
