@@ -189,11 +189,11 @@ def main():
     project=model_args.expr_name,
     # Track hyperparameters and run metadata.
     config={
-        **model_args,
-        **data_args,
-        **data_args
-    },
-)
+        **vars(model_args),
+        **vars(data_args),
+        **vars(training_args)
+        }
+    )
     if training_args.local_rank == 0:
         print('='*100)
         print(training_args)
