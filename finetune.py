@@ -63,7 +63,7 @@ False, and strictly in the following Json Format with a single key "PANDA":
 {table}
 ### Query
 {query}
-### Response:
+### Response:\n
 """.format(table=table, query=query).lstrip()
 
 @dataclass
@@ -78,6 +78,7 @@ class ModelArguments:
 class DataArguments:
     data_path: str = field(default=None, metadata={"help": "Path to the training data."})
     table_col_name: str = field(default=None, metadata={"help": "Name column with table serialization."})
+    num_proc: int = field(default=16, metadata={"help": "Num CPU process data"})
 
 
 @dataclass
@@ -174,7 +175,13 @@ def formatting_prompts_func(example,table_col_name=''):
     #    output_texts.append(prompt + response)
     #return output_texts
     return build_instruction_prompt(example[table_col_name], example['statement'])+ f'"PANDA": {example["pandas_code"]}\n{EOT_TOKEN}'
+def filter_long_examples(example):
+        full_text = formatting_prompts_func_loc(example)
+        tokenized = tokenizer(full_text, truncation=False, add_special_tokens=False)
+        return len(tokenized["input_ids"]) <= training_args.max_length
 
+    
+    
 
 
 run = None
@@ -207,11 +214,12 @@ def main():
         trust_remote_code=True
     )
 
-    print("PAD Token:", tokenizer.pad_token, tokenizer.pad_token_id)
-    print("BOS Token", tokenizer.bos_token, tokenizer.bos_token_id)
-    print("EOS Token", tokenizer.eos_token, tokenizer.eos_token_id)
+    
 
     if training_args.local_rank == 0:
+        print("PAD Token:", tokenizer.pad_token, tokenizer.pad_token_id)
+        print("BOS Token", tokenizer.bos_token, tokenizer.bos_token_id)
+        print("EOS Token", tokenizer.eos_token, tokenizer.eos_token_id)
         print("Load tokenizer from {} over.".format(model_args.model_name_or_path))
 
     model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -250,6 +258,20 @@ def main():
     raw_eval_dataset = dataset.get('val',None)
 # 2. Магия маскирования промпта (заменяет твой сложный preprocess)
 # Модель не будет учиться генерировать инструкцию, только то, что после "### Response:\n"
+    if training_args.local_rank == 0:
+        print(f"Размер train ДО фильтрации: {len(raw_train_dataset)}")
+        print(f"Размер val ДО фильтрации: {len(raw_eval_dataset)}")
+    with training_args.main_process_first(desc="dataset filtering"):
+        if raw_train_dataset is not None:
+            raw_train_dataset = raw_train_dataset.filter(filter_long_examples, num_proc=data_args.num_proc)
+        if raw_eval_dataset is not None:
+            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples, num_proc=data_args.num_proc)
+
+    # Выводим логи только на главном процессе, чтобы не дублировать текст в консоли
+    if training_args.local_rank == 0:
+        print(f"Размер train ПОСЛЕ фильтрации: {len(raw_train_dataset) if raw_train_dataset else 0}")
+        print(f"Размер val ПОСЛЕ фильтрации: {len(raw_eval_dataset) if raw_eval_dataset else 0}")
+
     response_template = "### Response:\n"
     collator = CustomCompletionOnlyCollator(
         response_template=response_template, 
