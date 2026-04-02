@@ -175,8 +175,8 @@ def formatting_prompts_func(example,table_col_name=''):
     #    output_texts.append(prompt + response)
     #return output_texts
     return build_instruction_prompt(example[table_col_name], example['statement'])+ f'"PANDA": {example["pandas_code"]}\n{EOT_TOKEN}'
-def filter_long_examples(example):
-        full_text = formatting_prompts_func_loc(example)
+def filter_long_examples(example,format_func = None):
+        full_text = format_func(example)
         tokenized = tokenizer(full_text, truncation=False, add_special_tokens=False)
         return len(tokenized["input_ids"]) <= training_args.max_length
 
@@ -243,6 +243,7 @@ def main():
                         ],
                     )
     formatting_prompts_func_loc = partial(formatting_prompts_func,table_col_name=data_args.table_col_name)
+    filter_long_examples_loc = partial(filter_long_examples,format_func=formatting_prompts_func_loc)
     if training_args.local_rank == 0:
         print("Load model from {} over.".format(model_args.model_name_or_path))
 
@@ -263,9 +264,9 @@ def main():
         print(f"Размер val ДО фильтрации: {len(raw_eval_dataset)}")
     with training_args.main_process_first(desc="dataset filtering"):
         if raw_train_dataset is not None:
-            raw_train_dataset = raw_train_dataset.filter(filter_long_examples, num_proc=data_args.num_proc_data)
+            raw_train_dataset = raw_train_dataset.filter(filter_long_examples_loc, num_proc=data_args.num_proc_data)
         if raw_eval_dataset is not None:
-            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples, num_proc=data_args.num_proc_data)
+            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples_loc, num_proc=data_args.num_proc)
 
     # Выводим логи только на главном процессе, чтобы не дублировать текст в консоли
     if training_args.local_rank == 0:
