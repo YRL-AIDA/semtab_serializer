@@ -266,7 +266,7 @@ def main():
         if raw_train_dataset is not None:
             raw_train_dataset = raw_train_dataset.filter(filter_long_examples_loc, num_proc=data_args.num_proc_data)
         if raw_eval_dataset is not None:
-            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples_loc, num_proc=data_args.num_proc)
+            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples_loc, num_proc=data_args.num_proc_data)
 
     # Выводим логи только на главном процессе, чтобы не дублировать текст в консоли
     if training_args.local_rank == 0:
