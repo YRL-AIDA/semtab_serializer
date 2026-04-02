@@ -175,7 +175,7 @@ def formatting_prompts_func(example,table_col_name=''):
     #    output_texts.append(prompt + response)
     #return output_texts
     return build_instruction_prompt(example[table_col_name], example['statement'])+ f'"PANDA": {example["pandas_code"]}\n{EOT_TOKEN}'
-def filter_long_examples(example,format_func = None):
+def filter_long_examples(example,format_func = None,tokenizer=None):
         full_text = format_func(example)
         tokenized = tokenizer(full_text, truncation=False, add_special_tokens=False)
         return len(tokenized["input_ids"]) <= training_args.max_length
@@ -243,7 +243,7 @@ def main():
                         ],
                     )
     formatting_prompts_func_loc = partial(formatting_prompts_func,table_col_name=data_args.table_col_name)
-    filter_long_examples_loc = partial(filter_long_examples,format_func=formatting_prompts_func_loc)
+    filter_long_examples_loc = partial(filter_long_examples,format_func=formatting_prompts_func_loc,tokenizer=tokenizer)
     if training_args.local_rank == 0:
         print("Load model from {} over.".format(model_args.model_name_or_path))
 
