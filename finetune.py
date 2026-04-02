@@ -178,7 +178,7 @@ def formatting_prompts_func(example,table_col_name=''):
 def filter_long_examples(example,format_func = None,tokenizer=None):
         full_text = format_func(example)
         tokenized = tokenizer(full_text, truncation=False, add_special_tokens=False)
-        return len(tokenized["input_ids"]) <= training_args.max_length
+        return len(tokenized["input_ids"]) <= tokenizer.model_max_length
 
     
     
