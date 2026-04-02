@@ -3,7 +3,7 @@ from peft import LoraConfig,TaskType
 import wandb
 
 # Start a new wandb run to track this script
-from transformers import TrainerCallback
+from transformers import TrainerCallback,EarlyStoppingCallback
 import time
 from functools import partial
 
@@ -290,7 +290,7 @@ def main():
         formatting_func=formatting_prompts_func_loc, # Функция, которая склеивает вопрос и ответ
         data_collator=collator, # Тот самый умный коллатор
         peft_config=peft_config, # SFTTrainer сам применит LoRA
-        callbacks=[WandbLoggingCallback()]
+        callbacks=[WandbLoggingCallback(),EarlyStoppingCallback(early_stopping_patience=3)]
     )
     
     # 5. Запуск
