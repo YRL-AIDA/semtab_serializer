@@ -78,7 +78,7 @@ class ModelArguments:
 class DataArguments:
     data_path: str = field(default=None, metadata={"help": "Path to the training data."})
     table_col_name: str = field(default=None, metadata={"help": "Name column with table serialization."})
-    num_proc: int = field(default=16, metadata={"help": "Num CPU process data"})
+    num_proc_data: int = field(default=16, metadata={"help": "Num CPU process data"})
 
 
 @dataclass
@@ -263,9 +263,9 @@ def main():
         print(f"Размер val ДО фильтрации: {len(raw_eval_dataset)}")
     with training_args.main_process_first(desc="dataset filtering"):
         if raw_train_dataset is not None:
-            raw_train_dataset = raw_train_dataset.filter(filter_long_examples, num_proc=data_args.num_proc)
+            raw_train_dataset = raw_train_dataset.filter(filter_long_examples, num_proc=data_args.num_proc_data)
         if raw_eval_dataset is not None:
-            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples, num_proc=data_args.num_proc)
+            raw_eval_dataset = raw_eval_dataset.filter(filter_long_examples, num_proc=data_args.num_proc_data)
 
     # Выводим логи только на главном процессе, чтобы не дублировать текст в консоли
     if training_args.local_rank == 0:
