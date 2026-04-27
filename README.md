@@ -21,3 +21,23 @@
 ## Authors
 
 \#TODO
+
+
+# Docker Setup for Duckling
+
+## Prerequisites
+Run the following commands in your terminal to install system dependencies and add your user to the Docker group:
+
+```bash
+# Update package list and install required dependencies
+sudo apt-get update
+sudo apt-get install -y libgmp-dev libpcre3-dev build-essential
+
+# Add user 'master' to the docker group
+sudo usermod -aG docker master
+
+#run docker
+docker run -d -p 8000:8000 --name duckling rasa/duckling
+
+# Check container status
+docker ps
