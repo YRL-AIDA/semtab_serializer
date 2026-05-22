@@ -7,12 +7,18 @@ answer to the question. Consider the following:
 3. Ensure the output is concise, correct, and when run, it outputs the correct
 given answer, and strictly follows the Json format: {{"PANDA": "<your Pandas code>"}}
 
-### Table schema
+If column names have spaces or special characters, use df['column name']
+Use pd.to_datetime() for date comparisons
+Return the actual value (not index or position)
+
+### Table Schema:
 {table}
 
-### Query
-{query}
+### Column Data Types:
+{column_types}
 
+### Query:
+{query}
 '''
 
 logic_prompt = '''You are an expert in Python with a specialization in pandas. Your task is to verify and correct a given pandas code that translates a natural language statement into a pandas expression. The corrected pandas code must accurately evaluate the truth of the statement when applied to the given table. Requirements:
@@ -54,4 +60,3 @@ Ensure the output is concise, correct, and when run outputs the answer, and stri
 ### Label
 {label}
 '''
-

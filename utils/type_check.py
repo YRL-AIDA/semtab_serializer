@@ -23,6 +23,9 @@ def clean_value(value: Any) -> str:
 
 def extract_number_string(s: str) -> str:
     """Подготовка строки для проверки на число (удаление валют, скобок, текста)"""
+    # Нормализация разных видов минусов и дефисов
+    s = s.replace('−', '-').replace('–', '-').replace('—', '-')
+
     # Удаляем символы валют в начале/конце
     s = re.sub(r'^[$€£¥₽\s]*', '', s)
     s = re.sub(r'[$€£¥₽\s]*$', '', s)
@@ -111,7 +114,7 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
 
     for value in values:
         if (pd.isna(value) or
-            (isinstance(value, str) and value.lower() in ['nan', 'na', 'n/a','nill'])):
+            (isinstance(value, str) and value.lower() in ['nan', 'na', 'n/a', 'nill', 'none','—','?'])):
             nan_count += 1
             continue
 
