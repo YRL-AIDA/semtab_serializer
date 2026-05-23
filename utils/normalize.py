@@ -3,18 +3,7 @@ import sys
 
 sys.path.insert(0, '/home/master/PycharmProjects/semtab_serializer')
 
-from utils.type_check import analyze_dataset_parallel, clean_value, extract_number_string
-
-
-def clean_column_name(col):
-    """Заменяет спецсимволы в имени колонки на _"""
-    # Заменяем переводы строк, скобки, пробелы, дефисы и другие спецсимволы на _
-    col = re.sub(r'[\n\r\t\(\)\[\]\{\}\-\s]+', '_', str(col))
-    # Убираем дублирующиеся подчеркивания
-    col = re.sub(r'_+', '_', col)
-    # Убираем подчеркивание в начале и конце
-    col = col.strip('_')
-    return col
+from utils.type_check import analyze_dataset_parallel, clean_value, extract_number_string,check_type_comprehensive
 
 
 def convert_value(v, t, keep_original_on_error=True):
@@ -104,15 +93,32 @@ def convert_dataset_types(df, max_workers=None):
     info = analyze_dataset_parallel(df, max_workers)
     res = df.copy()
 
-    # Переименовываем колонки, заменяя спецсимволы на _
-    res.columns = [clean_column_name(col) for col in res.columns]
-
     for col, (t, _) in info.items():
-        # Находим новое имя колонки после переименования
-        new_col = clean_column_name(col)
-        if t != 'None' and new_col in res.columns:
+        if t != 'None' and col in res.columns:
             try:
-                res[new_col] = convert_col(df[col], t)
+                res[col] = convert_col(df[col], t)
             except:
                 pass
     return res
+
+def convert_type(value):
+    type = check_type_comprehensive(value)[0]
+    res = value.copy()
+
+    try:
+        res = convert_value(res,type)
+    except:
+        pass
+    return res
+# train = pd.read_csv('../datasets/WikiTableQuestions/training.tsv', sep='\t')
+#
+# df = pd.read_csv('../datasets/WikiTableQuestions/' + train.iloc[1].context)
+# print(df)
+# print(analyze_dataset_parallel(df))
+# print('type',type(df.Year.iloc[0]))
+# print(df.Year.sum())
+#
+# norm_df = convert_dataset_types(df)
+# print(norm_df.Year.sum())
+# print(type(df.Year.iloc[0]))
+# print(type(convert_type(df.Year.iloc[0])))

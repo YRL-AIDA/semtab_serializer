@@ -1,19 +1,16 @@
 import pandas as pd
 import numpy as np
 import asyncio
-import random
+import json
 from get_pandas_code import get_pandas
 from check_result import evaluate_code
 from config import system_prompt
-from utils.normalize import convert_dataset_types
+from utils.normalize import convert_dataset_types,convert_type
+from utils.utils import serialize_table_to_tapex_format
 from check_result import extract_code_from_response
-
+from utils.type_check import analyze_dataset_parallel
 
 train = pd.read_csv('../../datasets/WikiTableQuestions/training.tsv', sep='\t')
-
-# Выбираем случайные индексы
-random.seed(101)
-random_indices = random.sample(range(len(train)), 20)
 
 
 def run_code_and_get_result(code_str, df):
@@ -21,75 +18,58 @@ def run_code_and_get_result(code_str, df):
     df_norm = convert_dataset_types(df)
     clean_code = extract_code_from_response(code_str)
     try:
-        result = eval(clean_code, {'df': df_norm, 'pd': pd, 'np': np})
+        result = eval(clean_code, {'df': df_norm, 'pd': pd, 'np': np,'convert_type':convert_type})
         return result, None
     except Exception as e:
         return None, str(e)
 
 
 async def main():
-    results = []
-    syntax_errors = 0
-    correct_answers = 0
-    total = len(random_indices)
+    json_result = []
 
-    for i, idx in enumerate(random_indices, 1):
-        print(f"\n{'='*80}")
-        print(f"--- Test {i}/{total} (train index: {idx}) ---")
+    for i in range(30,40):
+        df = pd.read_csv('../../datasets/WikiTableQuestions/' + train.iloc[i].context)
+        targetValue = train.iloc[i].targetValue
+        question = train.iloc[i].utterance
 
-        csv = pd.read_csv('../../datasets/WikiTableQuestions/' + train.context.iloc[idx])
-        question = train.utterance.iloc[idx]
-        targetValue = train.targetValue.iloc[idx]
+        norm_df = convert_dataset_types(df)
+        ser_df = serialize_table_to_tapex_format(norm_df)
+        df_types = analyze_dataset_parallel(df)
+        columns_types = {col: types[0] for col, types in df_types.items()}
 
-        # Нормализуем таблицу один раз
-        df_norm = convert_dataset_types(csv)
+        code = await get_pandas(question, ser_df, columns_types)
+        result = run_code_and_get_result(code, df)
+        error = None
+        if result[0] is not None:
+            result = result[0]
+        else:
+            error = result[1]
+            result = None
 
-        # Передаём в get_pandas нормализованную таблицу
-        code = await get_pandas(question, df_norm)
-        print(f"Generated code: {code}")
+        json_result.append({
+            'id': i,
+            'table': train.iloc[i].context,
+            'code': code,
+            'result': result,
+            'error': error
+        })
 
-        # Выполняем код на той же нормализованной таблице
-        result_val, error = run_code_and_get_result(code, df_norm)
-        print(f"Execution result: {result_val}")
-        if error:
-            print(f"Execution error: {error}")
-            syntax_errors += 1
-
-        print(f"Expected value: {targetValue}")
-
-        # Выводим информацию о таблицах (оригинальной и нормализованной)
-        print("\n--- Original table (first 5 rows) ---")
-        print(csv.head().to_string())
-        print("\n--- Normalized table (first 5 rows) ---")
-        print(df_norm.head().to_string())
-        print("\n--- Column types (original) ---")
-        print(csv.dtypes.to_string())
-        print("\n--- Column types (normalized) ---")
-        print(df_norm.dtypes.to_string())
-
-        # Проверяем совпадение
-        match = evaluate_code(code, df_norm, targetValue)
-        print(f"Match: {match}")
-
-        if match:
-            correct_answers += 1
-        results.append(match)
-
-    # Статистика
-    print("\n" + "="*80)
-    print("СТАТИСТИКА")
-    print("="*80)
-    print(f"Всего запусков:                 {total}")
-    print(f"С синтаксической ошибкой:       {syntax_errors}")
-    print(f"Без синтаксической ошибки:      {total - syntax_errors}")
-    print(f"Правильных ответов:             {correct_answers}")
-    print(f"Точность (от всех запусков):    {correct_answers / total * 100:.1f}%")
-    print(f"Точность (только без ошибок):   {correct_answers / (total - syntax_errors) * 100:.1f}%" if syntax_errors < total else "Точность (только без ошибок): N/A")
-    print("="*80)
-
-    return results
+        # print(system_prompt)
+        # print('table ',ser_df)
+        # # print('coll types ',columns_types)
+        # print('question ',question)
+        # print(run_code_and_get_result(input(),df))
+        # print(targetValue)
+        # print()
+        # print()
+        # print()
+        # print()
+        # print()
+        # print()
+    return json_result
 
 
 if __name__ == "__main__":
-    results = asyncio.run(main())
-    print(f"\nFinal results: {results}")
+    result = asyncio.run(main())  # ← сохраняем результат
+    for i in result:
+        print(i)

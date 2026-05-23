@@ -272,3 +272,4 @@ def analyze_dataset_parallel(dataset: pd.DataFrame, max_workers: Optional[int] =
             results[column_name] = column_result
 
     return results
+
