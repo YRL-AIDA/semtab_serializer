@@ -18,9 +18,9 @@ def convert_value(v, t, keep_original_on_error=True):
         return original if keep_original_on_error else pd.NA
 
     if t == 'bool':
-        if re.match(r'^(true|yes|да|истина|1|\+)$', s, re.I):
+        if re.match(r'^(true|yes|да|истина|\+)$', s, re.I):
             return True
-        if re.match(r'^(false|no|нет|ложь|0|-|\[ \])$', s, re.I):
+        if re.match(r'^(false|no|нет|ложь|-|\[ \])$', s, re.I):
             return False
         return original if keep_original_on_error else pd.NA
 
@@ -101,15 +101,27 @@ def convert_dataset_types(df, max_workers=None):
                 pass
     return res
 
+
 def convert_type(value):
+    # Копируем только если это необходимо
+    try:
+        res = value.copy()
+    except AttributeError:
+        res = value
+
     type = check_type_comprehensive(value)[0]
-    res = value.copy()
 
     try:
-        res = convert_value(res,type)
+        res = convert_value(res, type)
     except:
         pass
+
     return res
+
+def find_word(value: str)-> str:
+    return value
+
+
 # train = pd.read_csv('../datasets/WikiTableQuestions/training.tsv', sep='\t')
 #
 # df = pd.read_csv('../datasets/WikiTableQuestions/' + train.iloc[1].context)

@@ -22,9 +22,9 @@ async def get_pandas(question: str, ser_tbl: str, tbl_types: dict, max_rows=20):
     success, responses = await send_message_async(
         messages=[system_message, user_message
         ],
-        base_url="http://192.168.19.127:9886/v1",
+        base_url="http://127.0.0.1:9123/v1",
         api_key='EMPTY',
-        model_name='Qwen/Qwen3-4B-Instruct-2507',
+        model_name='Qwen/Qwen3-Coder-Next',
         temperature=0.3,
     )
 

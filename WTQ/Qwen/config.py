@@ -14,6 +14,22 @@ Filtering by range: df[df['Points'] > convert_type('79')]
 Filtering by date: df[df['Date'] > convert_type('2000-01-01')]
 Arithmetic with constants: convert_type('1000') + df['Bonus']
 String constant comparisons do NOT require convert_type: df[df['Team'] == 'Crettyard']
+Always use find_word(value: str)-> str when filtering by string entities mentioned in the question — such as names of companies, people, cities, categories, etc. — regardless of whether typos or variations are suspected.
+Examples for find_word():
+# Question: "Who scored the most points for Manchester United?"
+df[df["Team"] == find_word("Manchester United")]["Points"].max()
+
+# Question: "How many players from Belgrade are in the list?"
+df[df["City"] == find_word("Belgrade")].shape[0]
+
+# Question: "What category does 'Grand Slam' belong to?"
+df[df["Category"] == find_word("Grand Slam")]["Type"].iloc[0]
+
+# Question: "Find the record for Elliot Benyon"
+df[df["Name"] == find_word("Elliot Benyon")]
+
+# Question: "Which club signed a player from Australia?"
+df[df["Signed from"] == find_word("Australia")]
 Examples:
 
 Question: "Which team scored the most points?"
