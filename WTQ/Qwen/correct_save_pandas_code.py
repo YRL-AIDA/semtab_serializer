@@ -6,18 +6,15 @@ import logging
 import os
 from datetime import datetime
 
-from sympy.physics.units import temperature
 from tqdm.asyncio import tqdm
-from correct_pandas_code import get_pandas
-from check_result import evaluate_code
-from config import system_prompt
+from WTQ.Qwen.correct_pandas_code import get_pandas
 from utils.normalize import convert_dataset_types, convert_type, find_word
 from utils.utils import serialize_table_to_tapex_format
-from check_result import extract_code_from_response
+from WTQ.Qwen.check_result import extract_code_from_response
 from utils.type_check import analyze_dataset_parallel
 
 # Создаём папку для результатов
-RESULTS_DIR = 'train_results/corrected_train'
+RESULTS_DIR = '/home/master/PycharmProjects/semtab_serializer/WTQ/Qwen/train_results/corrected_train'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 
@@ -37,8 +34,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-train = pd.read_csv('../../datasets/WikiTableQuestions/training.tsv', sep='\t')
-with open('train_results/checkpoint_20260524_154618.json', 'r') as f:
+#train = pd.read_csv('../../datasets/WikiTableQuestions/training.tsv', sep='\t')
+train = pd.read_csv('/home/master/PycharmProjects/semtab_serializer/datasets/WikiTableQuestions/training.tsv', sep='\t')
+#with open('train_results/checkpoint_20260524_154618.json', 'r') as f:
+with open('/WTQ/Qwen/train_results/generated_train/results_20260524_154618.json', 'r') as f:
     errors = json.load(f)
 
 def save_checkpoint(results, filename):
@@ -95,7 +94,8 @@ async def process_single_row(i, train,errors,temperature):
         # 1. Чтение TSV с обработкой ошибок
         file_path = train.iloc[i].context
         tsv_path = file_path.replace('.csv', '.tsv').replace('/csv/', '/tsv/')
-        full_path = '../../datasets/WikiTableQuestions/' + tsv_path
+        #full_path = '../../datasets/WikiTableQuestions/' + tsv_path
+        full_path = '/home/master/PycharmProjects/semtab_serializer/datasets/WikiTableQuestions/' + tsv_path
 
 
 
@@ -113,7 +113,9 @@ async def process_single_row(i, train,errors,temperature):
                 'result': None,
                 'error': f"CSV/TSV read error: {e}",
                 'is_correct': False,
-                'target_value': train.iloc[i].targetValue
+                'target_value': train.iloc[i].targetValue,
+                'temperature': None,
+                'old_pandas_code': None
             }
 
         targetValue = train.iloc[i].targetValue
@@ -141,7 +143,7 @@ async def process_single_row(i, train,errors,temperature):
 
         # 3. Получение кода от модели
         try:
-            code = await get_pandas(question, ser_df, columns_types, pandas_code, error, temperature)
+            code = await get_pandas(question, ser_df, columns_types, pandas_code, error, temperature= temperature)
         except Exception as e:
             logger.error(f"get_pandas failed for row {i}: {e}")
             return {
@@ -152,12 +154,21 @@ async def process_single_row(i, train,errors,temperature):
                 'error': f"get_pandas error: {e}",
                 'is_correct': False,
                 'target_value': targetValue,
-                'temperature': temperature
+                'temperature': None,
+                'old_pandas_code': None
             }
 
         # 4. Выполнение кода
         result, error = run_code_and_get_result(code, df)
-
+        # Приведение результата к формату target_value
+        if error is None and result is not None:
+            if isinstance(result, list):
+                result = '|'.join(str(x) for x in result)
+            elif isinstance(result, pd.Series):
+                if len(result) == 1:
+                    result = str(result.iloc[0])
+                else:
+                    result = '|'.join(str(x) for x in result.tolist())
         # 5. Сравнение с ожидаемым значением
         try:
             norm_target = safe_convert_type(targetValue)
@@ -173,7 +184,9 @@ async def process_single_row(i, train,errors,temperature):
             'result': str(result) if result is not None else None,
             'error': error,
             'is_correct': bool(is_correct),
-            'target_value': targetValue
+            'target_value': targetValue,
+            'temperature': temperature,
+            'old_pandas_code': pandas_code
         }
 
     except Exception as e:
@@ -185,7 +198,11 @@ async def process_single_row(i, train,errors,temperature):
             'result': None,
             'error': f"Unexpected: {e}",
             'is_correct': False,
-            'target_value': train.iloc[i].targetValue if i < len(train) else None
+            'target_value': train.iloc[i].targetValue if i < len(train) else None,
+            'temperature': None,
+            'old_pandas_code': None
+
+
         }
 
 
@@ -207,12 +224,13 @@ async def main():
     logger.info(f"Results directory: {os.path.abspath(RESULTS_DIR)}")
 
     results = existing_results.copy()
-    temperature = 0.3
-    attempt = 1
-    # Обрабатываем оставшиеся последовательно (для сохранения каждые 100)
+
+        # Обрабатываем оставшиеся последовательно (для сохранения каждые 100)
     if remaining_ids:
         with tqdm(total=len(remaining_ids), desc="Processing WikiTableQuestions") as pbar:
             for idx, i in enumerate(remaining_ids, 1):
+                temperature = 0.3
+                attempt = 1
                 result = await process_single_row(i, train, errors[i], temperature)
                 while result['error']is not None and attempt < 4:
                     temperature += 0.23333
@@ -240,7 +258,6 @@ async def main():
 
 
 if __name__ == "__main__":
-
     result, count = asyncio.run(main())
 
     # Вывод результатов в консоль

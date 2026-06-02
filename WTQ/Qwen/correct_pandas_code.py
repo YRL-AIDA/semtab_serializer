@@ -1,11 +1,8 @@
-import pandas as pd
-from send_message import send_message_async, ModelMessageDict
-import asyncio
-from config import correct_prompt
-from utils.type_check import analyze_dataset_parallel
+from WTQ.Qwen.send_message import send_message_async, ModelMessageDict
+from WTQ.Qwen.config import correct_prompt
 
 
-async def get_pandas(question: str, ser_tbl: str, tbl_types: dict,pandas_code:str, error:str, target_value:int, temperature: float,max_rows=20):
+async def get_pandas(question: str, ser_tbl: str, tbl_types: dict,pandas_code:str, error:str, temperature: float,max_rows=20):
 
     system_message = ModelMessageDict(role = 'system')
     system_message.add_text_content(correct_prompt)

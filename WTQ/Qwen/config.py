@@ -1,4 +1,4 @@
-system_prompt = '''
+generate_prompt = '''
 You are a Python expert specializing in pandas. You are given a question and a table. Your task is to translate the 
 given natural language question into a single-line pandas expression. This expression, which acts like a query, 
 must be valid and executable so that running the pandas expression will output the answer to the question. Consider the following:

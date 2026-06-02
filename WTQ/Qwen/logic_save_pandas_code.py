@@ -5,12 +5,10 @@ import json
 import logging
 import os
 from datetime import datetime
-
-from sympy.physics.units import temperature
 from tqdm.asyncio import tqdm
 from logic_pandas_code import get_pandas
 from check_result import evaluate_code
-from config import system_prompt
+from config import generate_prompt
 from utils.normalize import convert_dataset_types, convert_type, find_word
 from utils.utils import serialize_table_to_tapex_format
 from check_result import extract_code_from_response
@@ -38,9 +36,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 train = pd.read_csv('../../datasets/WikiTableQuestions/training.tsv', sep='\t')
-with open('train_results/checkpoint_20260524_154618.json', 'r') as f:
+with open('train_results/generated_train/checkpoint_20260524_154618.json', 'r') as f:
     first_train_false_results = json.load(f)
-with open('train_results/corrected_train/results_20260525_120429.json', 'r') as f:
+with open('train_results/corrected_train/results_20260526_140242.json', 'r') as f:
     second_train_false_results = json.load(f)
 
 def save_checkpoint(results, filename):
@@ -192,64 +190,68 @@ async def process_single_row(i, train,errors,temperature):
 
 
 async def main():
-    # Генерация ID для обработки
-    # ids = list(range(len(train)))
+    # 1. Строим словарь некорректных результатов (id -> данные)
+    all_train_false_results = {}
     ids = []
-    all_train_false_results = []
-    for i in first_train_false_results:
-        if i['error'] is None and not i['is_correct']:
-            all_train_false_results.append(i)
-            ids.append(i['id'])
-    for i in second_train_false_results:
-        if i['error'] is None and not i['is_correct']:
-            all_train_false_results.append(i)
-            ids.append(i['id'])
-    print(len(all_train_false_results))
 
-    # Загружаем уже обработанные ID из чекпоинта
+    for item in first_train_false_results:
+        if item.get('error') is None and not item.get('is_correct', False):
+            all_train_false_results[item['id']] = item
+            ids.append(item['id'])
+
+    for item in second_train_false_results:
+        if item.get('error') is None and not item.get('is_correct', False):
+            all_train_false_results[item['id']] = item
+            ids.append(item['id'])
+
+    print(f"Найдено некорректных строк: {len(all_train_false_results)}")
+    # 2. Загружаем уже обработанные ID из чекпоинта
     existing_results = load_checkpoint(checkpoint_filename)
     processed_ids = {r['id'] for r in existing_results}
 
-    # Фильтруем необработанные
     remaining_ids = [i for i in ids if i not in processed_ids]
 
-    logger.info(f"Total: {len(ids)}, Already processed: {len(processed_ids)}, Remaining: {len(remaining_ids)}")
-    logger.info(f"Results directory: {os.path.abspath(RESULTS_DIR)}")
+    logger.info(f"Всего: {len(ids)}, Уже обработано: {len(processed_ids)}, Осталось: {len(remaining_ids)}")
 
     results = existing_results.copy()
-    attempt = 1
-    # Обрабатываем оставшиеся последовательно (для сохранения каждые 100)
+
+    # 3. Обработка оставшихся строк
     if remaining_ids:
-        with tqdm(total=len(remaining_ids), desc="Processing WikiTableQuestions") as pbar:
-            for idx, i in enumerate(remaining_ids, 1):
+        with tqdm(total=len(remaining_ids), desc="Повторная обработка") as pbar:
+            for idx, row_id in enumerate(remaining_ids, 1):
+                # Инициализация для каждой строки
                 temperature = 0.3
-                result = await process_single_row(i, train, all_train_false_results[i], temperature)
-                while result['is_correct'] and attempt < 4:
+                attempt = 1
+                error_info = all_train_false_results[row_id]
+
+                result = await process_single_row(row_id, train, error_info, temperature)
+
+                # Пытаемся улучшить результат, увеличивая температуру (если ответ неверный)
+                while not result['is_correct'] and attempt < 4:
                     temperature += 0.23333
-                    temperature = min(temperature,1)
+                    temperature = min(temperature, 1.0)
                     attempt += 1
-                    result = await process_single_row(i, train, all_train_false_results[i], temperature)
+                    result = await process_single_row(row_id, train, error_info, temperature)
+
                 results.append(result)
 
-                # Сохраняем чекпоинт каждые 100 строк
                 if idx % 100 == 0:
                     save_checkpoint(results, checkpoint_filename)
 
                 pbar.update(1)
 
-    # Финальное сохранение
+    # 4. Сохраняем финальные результаты
     save_checkpoint(results, results_filename)
-
-    # Подсчёт правильных ответов
     total_correct = sum(1 for r in results if r['is_correct'])
 
-    logger.info(f"Final results saved to {results_filename}")
-    logger.info(f"Logs saved to {log_filename}")
+    logger.info(f"Итоговый файл: {results_filename}")
+    logger.info(f"Лог: {log_filename}")
 
     return results, total_correct
 
 
 if __name__ == "__main__":
+    print(len(second_train_false_results))
 
     result, count = asyncio.run(main())
 
