@@ -1,22 +1,25 @@
 import pandas as pd
 from send_message import send_message_async, ModelMessageDict
 import asyncio
-from config import logic_prompt
+from config import sql_pandas_logic_prompt
 from utils.type_check import analyze_dataset_parallel
 
 
-async def get_pandas(question: str, ser_tbl: str, tbl_types: dict,pandas_code:str, error:str, temperature: float,max_rows=20):
+async def get_pandas(question: str, ser_tbl: str, tbl_types: dict,
+                     pandas_code: str, error: str, temperature: float,
+                     max_rows=50, sql=None):   # добавили sql
 
-    system_message = ModelMessageDict(role = 'system')
-    system_message.add_text_content(logic_prompt)
+    system_message = ModelMessageDict(role='system')
+    system_message.add_text_content(sql_pandas_logic_prompt)
 
     user_message = ModelMessageDict(role='user')
-    user_message.add_text_content(
+    content = (
         f"QUESTION: {question}\n"
         f"AVAILABLE COLUMNS: {', '.join(list(tbl_types.keys()))}\n"
-        #f"COLUMN TYPES:\n{tbl_types}\n"
-        f"TABLE DATA:\n{ser_tbl}"
-        f"PANDAS CODE: \n{pandas_code}"
+        f"TABLE DATA:\n{ser_tbl}\n"
+        f"PANDAS CODE (incorrect):\n{pandas_code}\n"
+        f"PREVIOUS ERROR:\n{error}\n"
+        f"CORRECT SQL QUERY (for reference): \n{sql}\n"
     )
 
     success, responses = await send_message_async(
