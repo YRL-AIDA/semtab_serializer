@@ -234,24 +234,21 @@ async def main():
     logger.info(f"Всего: {len(ids)}, Уже обработано: {len(processed_ids)}, Осталось: {len(remaining_ids)}")
 
     results = existing_results.copy()
-    count = 0
+
     if remaining_ids:
         with tqdm(total=len(remaining_ids), desc="Повторная обработка с SQL") as pbar:
             for idx, row_id in enumerate(remaining_ids, 1):
                 temperature = 0.3
                 attempt = 1
                 error_info = all_train_false_results[row_id]
+
                 result = await process_single_row(row_id, train, error_info, temperature)
                 while not result['is_correct'] and attempt < 4:
                     temperature += 0.23333
                     temperature = min(temperature, 1.0)
                     attempt += 1
                     result = await process_single_row(row_id, train, error_info, temperature)
-                count +=1
-                results.append(result)
-                if count == 4:
-                    print(results)
-                    exit()
+
                 results.append(result)
 
                 if idx % 100 == 0:

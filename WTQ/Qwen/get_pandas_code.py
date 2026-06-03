@@ -1,15 +1,14 @@
-from config import system_prompt
 import pandas as pd
 from send_message import send_message_async, ModelMessageDict
 import asyncio
-from config import system_prompt
+from config import sql_pandas_prompt
 from utils.type_check import analyze_dataset_parallel
 
 
-async def get_pandas(question: str, ser_tbl: str, tbl_types: dict, max_rows=20):
+async def get_pandas(question: str, ser_tbl: str, tbl_types: dict, max_rows=20,sql = None):
 
     system_message = ModelMessageDict(role = 'system')
-    system_message.add_text_content(system_prompt)
+    system_message.add_text_content(sql_pandas_prompt)
 
     user_message = ModelMessageDict(role='user')
     user_message.add_text_content(
@@ -17,6 +16,7 @@ async def get_pandas(question: str, ser_tbl: str, tbl_types: dict, max_rows=20):
         f"AVAILABLE COLUMNS: {', '.join(list(tbl_types.keys()))}\n"
         #f"COLUMN TYPES:\n{tbl_types}\n"
         f"TABLE DATA:\n{ser_tbl}"
+        f"SQL: \n{sql}"
     )
 
     success, responses = await send_message_async(

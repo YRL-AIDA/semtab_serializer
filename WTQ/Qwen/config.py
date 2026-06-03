@@ -204,39 +204,50 @@ Original question: {question}
 '''
 
 sql_pandas_logic_prompt = '''
-You are a Python expert specializing in converting SQL queries to pandas code. You are given the original question, 
-available columns, the table, a SQL query, a previous incorrect pandas code, and the error it produced. 
-The SQL query produces the correct answer. Your primary task is to translate the SQL query into a single-line pandas expression, 
-using the previous incorrect code and its error to avoid repeating mistakes. Consider the following:
-1. The table is represented as a pandas DataFrame named df.
-2. Do not include explanations, comments, or multiline outputs.
-3. Ensure the output is concise, correct, and when run, it outputs the correct given answer, and strictly follows the JSON format: {"PANDA": "<your Pandas code>"}
-4. Use double quotes inside the pandas code and escape them with backslash. Example: df["Column"] not df['Column'].
-5. Do not use double curly braces {{ }}. Use single curly braces { }.
-6. Always use convert_type('...') for numeric and date constants from the SQL query, even if they look like plain numbers. Example: df[df['Year'] == convert_type('2005')] not df[df['Year'] == 2005].
-Use convert_type, which converts string values into appropriate types: numbers (int/float) with automatic removal of extra characters (spaces, currencies, percentages, thousand separators, parentheses) and dates/times into pandas Timestamp recognizing various formats (ISO, European, American, with month names). If conversion is impossible, the function returns the original value unchanged.
-Signature: convert_type(value: Any) -> Any
-When to apply convert_type (only to constants from the SQL query):
-- Filtering by number: df[df['Year'] == convert_type('2005')]
-- Filtering by range: df[df['Points'] > convert_type('79')]
-- Filtering by date: df[df['Date'] > convert_type('2000-01-01')]
-- Arithmetic with constants: convert_type('1000') + df['Bonus']
-String constant comparisons do NOT require convert_type: df[df['Team'] == 'Crettyard']
-Always use find_word(value: str) -> str when filtering by string entities mentioned in the SQL query — such as names of companies, people, cities, categories, etc. — regardless of whether typos or variations are suspected.
-Examples for find_word():
-# SQL: SELECT * FROM df WHERE Team = 'Manchester United'
-df[df["Team"] == find_word("Manchester United")]
+You are a Python expert specializing in converting SQL queries to pandas code.
 
-# SQL: SELECT MAX(Points) FROM df WHERE Team = 'Manchester United'
-df[df["Team"] == find_word("Manchester United")]["Points"].max()
+CRITICAL WORKFLOW (follow in this exact order):
+1. FIRST, find the SQL query in the CORRECT SQL QUERY section
+2. SECOND, look at the COLUMN MAPPING section to understand what each abstract column means
+3. THIRD, translate the SQL to pandas using ONLY columns from the mapping
+4. FOURTH, check that your code does NOT repeat the incorrect old code
+5. FINALLY, output in JSON format
 
-# SQL: SELECT COUNT(*) FROM df WHERE City = 'Belgrade'
-df[df["City"] == find_word("Belgrade")].shape[0]
+CRITICAL RULES:
+- The SQL query uses abstract column names (c1, c2, c3_number, etc.) that DON'T exist in the DataFrame
+- YOU MUST replace them with real column names from the COLUMN MAPPING
+- If mapping says "c4 → Away team", then c4 means df["Away team"]
+- NEVER invent columns like "Player", "Team", "Points", "Win", "Distance" 
+- The old pandas code is WRONG - do NOT copy it
+- If old code uses 'Years' but mapping shows c3_number → Points, you MUST use 'Points'
 
-# SQL: SELECT Type FROM df WHERE Category = 'Grand Slam' LIMIT 1
-df[df["Category"] == find_word("Grand Slam")]["Type"].iloc[0]
+OUTPUT FORMAT:
+- Valid JSON: {"PANDA": "<your Pandas code>"}
+- Inside the JSON string, use escaped double quotes: df["Column"] becomes df[\"Column\"]
+- Example output: {"PANDA": "df[\"Away team\"].iloc[0]"}
+- When this JSON is parsed and executed, df[\"Away team\"] becomes df["Away team"]
 
-SQL query: {sql_query}
-Table schema: {table_schema}
-Original question: {question}
+ADDITIONAL RULES:
+1. The table is a pandas DataFrame named df
+2. No explanations, comments, or multiline outputs
+3. Use convert_type('...') for numeric/date constants from SQL
+4. Use find_word('...') for string entity filtering in SQL
+5. String comparisons without entities don't need convert_type
+
+FUNCTIONS:
+- convert_type(value): Converts strings to numbers/dates automatically
+- find_word(value): Finds string entities in text columns (handles typos)
+
+EXAMPLES OF CORRECT TRANSLATIONS:
+SQL: select c4 from w where id = 1
+Mapping: c1→Date, c2→Home team, c3→Score, c4→Away team
+Output: {"PANDA": "df[\"Away team\"].iloc[0]"}
+
+SQL: select avg(c3_number) from w
+Mapping: c1→Year, c2→Team, c3_number→Points
+Output: {"PANDA": "df[\"Points\"].apply(lambda x: convert_type(x)).mean()"}
+
+SQL: select c2 from w where c2_first in ('vietnam', 'indonesia') order by c6_number desc limit 1
+Mapping: c1→Rank, c2→Nation, c6_number→Total
+Output: {"PANDA": "df[df[\"Nation\"].str.contains(find_word('Vietnam') + '|' + find_word('Indonesia'))].sort_values(\"Total\", ascending=False)[\"Nation\"].iloc[0]"}
 '''
