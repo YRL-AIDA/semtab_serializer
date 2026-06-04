@@ -12,12 +12,8 @@ from io import StringIO
 from tqdm import tqdm
 import re
 import time
-import traceback
-import shutil
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.abspath('/media/research/yrl_aida_users/poddubny/poddubnyy/postgraduate/semtab_serializer/tests')))
-
-from utils.utils import load_config
 
 system_prompt = '''You are a Python expert specializing in pandas. Your task is to translate the
 given natural language statement into a single-line pandas expression. This
@@ -43,7 +39,7 @@ False, and strictly in the following Json Format with a single key "CORRECT PAND
 '''
 
 
-def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="http://127.0.0.1:9092/v1",api_key="dummy",
+def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="http://127.0.0.1:8800/v1",api_key="dummy",
                  model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5',system_prompt='', stop = ["Observation:","\n\n\n\n","\n \n \n"]):
     client = OpenAI(base_url=server_url, api_key=api_key)
     model_input = [
@@ -117,20 +113,15 @@ def parse_panda_code(input_string):
 def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcting_prompt='', 
                  stop=["Observation:", "\n\n\n\n", "\n \n \n"],
                  max_tokens=500, top_p=0.9, temperature=0.5, 
-                 server_url="http://127.0.0.1:9092/v1", api_key="dummy",
-                 model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5', max_iter=5,add_df_info=False):
+                 server_url="http://127.0.0.1:8800/v1", api_key="dummy",
+                 model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5', max_iter=5):
     """
     Рекурсивно исправляет код с использованием LLM
     """
     if iter_id < max_iter:
-        if add_df_info :
-            df_info = df.dtypes.to_string()
-            df_info = f'DATAFRAME TABLE TYPES: {df_info}\n'
-        else:
-            df_info = ''
         # Формируем запрос на исправление
         success, response = send_message(
-            f'INPUT DATA: {input_data}\n{df_info} CODE: {code_str}\nERROR: {error_str}',
+            f'INPUT DATA: {input_data}\nCODE: {code_str}\nERROR: {error_str}',
             stop=stop,
             max_tokens=max_tokens,
             top_p=top_p,
@@ -148,7 +139,7 @@ def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcti
                 return correct_code(df, input_data, code_str, error_str, iter_id=iter_id+1,
                                    max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                    server_url=server_url, api_key=api_key, model_name=model_name,
-                                   system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
+                                   system_correcting_prompt=system_correcting_prompt, max_iter=max_iter)
             
             try:
                 # Пробуем выполнить исправленный код
@@ -158,23 +149,23 @@ def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcti
             except Exception as e:
                 print(f"Iteration {iter_id}: Code execution failed with error: {e}")
                 # Рекурсивно пытаемся исправить новый код
-                return correct_code(df, input_data, code, f'{type(e).__name__}: {e}', iter_id=iter_id+1,
+                return correct_code(df, input_data, code, str(e), iter_id=iter_id+1,
                                    max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                    server_url=server_url, api_key=api_key, model_name=model_name,
-                                   system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
+                                   system_correcting_prompt=system_correcting_prompt, max_iter=max_iter)
         else:
             print(f'Iteration {iter_id}: LLM call failed')
             # Если не удалось вызвать LLM, пробуем снова с теми же данными
             return correct_code(df, input_data, code_str, error_str, iter_id=iter_id+1,
                                max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                server_url=server_url, api_key=api_key, model_name=model_name,
-                               system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
+                               system_correcting_prompt=system_correcting_prompt, max_iter=max_iter)
     else:
         print(f'Max iterations ({max_iter}) reached without successful correction')
         return False, code_str, None
 
 
-def dataset_processing(entry,serialized_table_field=None,system_correcting_prompt='',system_prompt='',add_df_info=False,**kwargs):
+def dataset_processing(entry,query_field=None,system_correcting_prompt='',system_prompt=''):
     df = pd.read_csv(StringIO(entry['table_text']), delimiter='#')
     for col in df.columns:
         try:
@@ -182,33 +173,33 @@ def dataset_processing(entry,serialized_table_field=None,system_correcting_promp
         except ValueError:
             # Если возникает ошибка, оставляем столбец как есть
             continue
-    #query = entry[f"{query_field}_query"]
-    #query = entry['statement']+ ' ' + serialize_table(df,serialization_type='space')     
-    query = entry['statement']+ ' ' + entry[serialized_table_field]
-    success,response = send_message(query, system_prompt=system_prompt)
+            
+    success,response = send_message(entry[f"{query_field}_query"],
+                                       system_prompt=system_prompt)
 
-    entry[f'{serialized_table_field}_answ'] = 'None'
-    entry[f'{serialized_table_field}_label'] = 'None'
-    entry[f'{serialized_table_field}_answ_correct'] = 'None'
+    entry[f'{query_field}_answ'] = 'None'
+    entry[f'{query_field}_label'] = 'None'
+    entry[f'{query_field}_answ_correct'] = 'None'
 
     
     if success:
-        entry[f'{serialized_table_field}_answ'] = response
+        entry[f'{query_field}_answ'] = response
         try:
             code = parse_panda_code(response)
             try:
             
                 pandas_eval = str(bool(eval(code)))
-                entry[f'{serialized_table_field}_label'] = str(pandas_eval)
+                entry[f'{query_field}_label'] = str(pandas_eval)
             except Exception as e:
                 print('EEEERRRRRRR', entry['id'])
                 print(e)
-                success_correcting, new_code, correcting_response = correct_code(df,query,code,f'{type(e).__name__}: {e}',
-                                             system_correcting_prompt=system_correcting_prompt,add_df_info=add_df_info)
+                success_correcting, new_code, correcting_response = correct_code(df,entry[f"{query_field}_query"],
+                                             code,str(e),
+                                             system_correcting_prompt=system_correcting_prompt)
                 if success_correcting:
                     pandas_eval = str(bool(eval(new_code)))
-                    entry[f'{serialized_table_field}_label'] = str(pandas_eval)
-                    entry[f'{serialized_table_field}_answ_correct'] = correcting_response
+                    entry[f'{query_field}_label'] = str(pandas_eval)
+                    entry[f'{query_field}_answ_correct'] = correcting_response
         except Exception as e:
             print (e)
         
@@ -223,38 +214,29 @@ def main():
     parser.add_argument('--outputdata', type=str, default='./answer_gen_nlsep_none_filtered_new_dataset_failran_clear')
     parser.add_argument('--num_proc', type=int, default=16, 
                       help='Количество процессов')
-    parser.add_argument('--conf-file', type=str, default='./convert_conf.yaml')
-    #parser.add_argument('--add-df-info', type=int, default=0, help='Добавлять ли доп инфо о типах и столбцах df')
+    parser.add_argument('--query-field', type=str, default='nlsep', 
+                       choices=['semtab', 'nlsep','proto'], help='Тип query field')
     
     args = parser.parse_args()
     
     inputdata = args.inputdata
     outputdata = args.outputdata
-    NUM_PROC = args.num_proc
-    #add_df_info = bool(args.add_df_info)
-    conf_file = args.conf_file
+    query_field = args.query_field
+    NUM_PROC = args.num_proc 
+    
     print(f"inputdata: {inputdata}")
     print(f"outputdata: {outputdata}")
+    print(f"query_field: {query_field}")
     print(f"num-proc: {NUM_PROC}")
-    print(f"conf-file: {conf_file}")
     # Ваш основной код здесь
+    dataset = load_from_disk(inputdata)
     #dataset = dataset.filter(lambda x: True if x[f'{query_field}_answ']!='None' else False,num_proc=17)
     #dataset = dataset.filter(lambda x: True if x[f'{query_field}_label']=='None' else False,num_proc=17)
-    config_data = load_config(conf_file)
-    dataset = load_from_disk(inputdata)
-    
-    for config_name in config_data.keys():
-        config = config_data[config_name]
-        print(config_name)
-        print(config) 
-        dataset2 = dataset.map(partial(dataset_processing,serialized_table_field=config_name,
+    dataset = dataset.map(partial(dataset_processing,query_field=query_field,
                                   system_correcting_prompt=system_correcting_prompt,
-                        system_prompt=system_prompt,**config),num_proc=NUM_PROC)
-        #if inputdata == outputdata:
-         #   shutil.rmtree(inputdata)
-        dataset2.save_to_disk(outputdata)
-        dataset = dataset2
+                                           system_prompt=system_prompt),num_proc=NUM_PROC)
+    dataset.save_to_disk(outputdata)
+
 
 if __name__ == "__main__":
-    #python abation_experiments.py --inputdata tab_fact_test_semtab__html_ablation --outputdata tab_fact_test_semtab_html_ablation_correcring_first --conf-file semtab_html_config_answer.yaml --num_proc 16 > tab_fact_test_html_ablation_log2.txt
     main()          

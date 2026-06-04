@@ -21,22 +21,26 @@ class ColumnDefGenerator:
     def _get_table_columns_defenitions(self,table_name: str):
         if table_name == None:
             return None
-        table_def = pd.read_parquet("/home/poddubny/notebooks/poddubnyy/postgraduate/semtab_serializer/utils/defgen/df_pantabfact_train.parquet.gzip")
-        return json.loads(table_def[table_def['table_csv']==table_name]['column_defenition_json'].to_list()[0])
+        #table_def = pd.read_parquet("/home/poddubny/notebooks/poddubnyy/postgraduate/semtab_serializer/utils/defgen/df.parquet.gzip")
+        table_def = pd.read_parquet("/home/poddubny/notebooks/poddubnyy/postgraduate/semtab_serializer/utils/defgen/df_wtq_train.parquet.gzip")
+        #return json.loads(table_def[table_def['table_csv']==table_name]['column_defenition_json'].to_list()[0])
+        return json.loads(table_def[table_def['context']==table_name]['column_defenition_json'].to_list()[0])
         
     def annotate_columns(self, df: pd.DataFrame, top_k: int= 1, threshold: float = 0.5, add_data = None)-> List[List[Tuple[str,float]]]:
         if add_data != None:
-            col_def = self._get_table_columns_defenitions(add_data.get('table_csv', None))
-            
+            #col_def = self._get_table_columns_defenitions(add_data.get('table_csv', None))
+            col_def = self._get_table_columns_defenitions(add_data.get('context', None))
             # Создаем новый словарь с нормализованными ключами
             normalized_col_def = {}
             for key, value in col_def.items():
-                normalized_key = re.sub(' ', '', key).lower()
+                #normalized_key = re.sub(' ', '', key).lower()
+                normalized_key =  re.sub('\\n','',re.sub('\\\\n','',re.sub(' ','',key))).lower()
                 normalized_col_def[normalized_key] = value
                 # Сохраняем и оригинальный ключ, если нужно
                 normalized_col_def[key] = value
             
-            return [[(normalized_col_def.get(re.sub(' ', '', col_name).lower(), ''), None)]
+            #return [[(normalized_col_def.get(re.sub(' ', '', col_name).lower(), ''), None)]
+            return [[(normalized_col_def.get(re.sub('\\n','',re.sub('\\\\n','',re.sub(' ','',col_name))).lower(), ''), None)]
                    for col_name in df.columns]
         else:
             #print('!'*50)

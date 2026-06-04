@@ -11,9 +11,11 @@ from io import StringIO
 from tqdm import tqdm
 from utils.utils import serialize_table, load_config
 from utils.doduo.doduo import Doduo
+from utils.cossim.cossim import Qwen3EmbeddingMatcher
+from utils.defgen.defgen import ColumnDefGenerator
 import argparse
 from functools import partial
-
+import torch
 
             
 def add_to_dataset_table_serialization(data,name=None,include_description=False,**kwargs):
@@ -22,7 +24,9 @@ def add_to_dataset_table_serialization(data,name=None,include_description=False,
     df = pd.read_csv(StringIO(data['table_text']), delimiter='#')
     try:
         if include_description:
-            kwargs['description'] = data['table_caption']    
+            kwargs['description'] = data['table_caption']
+            #print(type(data))
+        kwargs['add_data'] = data
         data[name] = serialize_table(df,**kwargs)
     #try:
      #   data['semtab_query'] = data['statement'] + ' ' + serialize_table(df,model=model, description=data['table_caption'],basedir='../utils/doduo/')
@@ -55,12 +59,21 @@ def main():
         print(config_name)
         print(f"num-proc: {num_proc}")
         print(config_data)
+        model = None
         num_proc = config.get('num_proc',None) 
         if config['serialization_type']=='semtab':
             if config['include_semantic_types']:
-                model = Doduo(argparse.Namespace(**{'model': config['model_type'], 'device': config['device']}),basedir=config['model_base_dir'])#'../utils/doduo/')
+                if config['semantic_method'] == 'Doduo':
+                    model = Doduo(argparse.Namespace(**{'model': config['model_type'], 'device': config['device']}),basedir=config['model_base_dir'])#'../utils/doduo/')
+                
         # Ваш основной код здесь
-                config['model'] = model
+                    config['model'] = model
+                elif config['semantic_method'] == 'CosSim':
+                    model = Qwen3EmbeddingMatcher(**config)
+                    config['model'] = model
+                elif config['semantic_method'] == 'DefGen':
+                    model = ColumnDefGenerator()
+                    config['model'] = model
                 num_proc = None
         
         add_to_dataset_table_serialization_partial = partial(add_to_dataset_table_serialization,name=config_name,**config)
@@ -69,6 +82,11 @@ def main():
         dataset2 = dataset.map(add_to_dataset_table_serialization_partial,num_proc=num_proc)
         dataset2.save_to_disk(outputdata)
         dataset = dataset2
+        del model
+        del config
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+
 
 if __name__ == "__main__":
     main()          

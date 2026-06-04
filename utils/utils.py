@@ -268,7 +268,7 @@ def get_attributes_xml_serialization(table: pd.DataFrame,include_data_types: boo
         if include_semantic_types:
             #head.set("SEMANTIC_TYPE"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
              #                                    for type_,prop in sem_types[col_idx][1].items()]))
-            head.set("COLUMN DESCRIPTION"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
+            head.set("COLUMN_DESCRIPTION"," ; ".join([" - ".join([type_,str(round(prop,2) if prop != None else '')]) 
                                                  for type_,prop in sem_types[col_idx][1].items()]))
         if include_data_types:
             head.set("DATA_TYPE",json.dumps(data_types[column_name][0]))

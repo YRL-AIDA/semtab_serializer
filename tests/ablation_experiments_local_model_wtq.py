@@ -14,40 +14,80 @@ import re
 import time
 import traceback
 import shutil
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+import numpy as np
+'''
+python ablation_experiments_local_model_wtq.py --inputdata WTQ_test_xml --outputdata wtq_test_xml_baseline --conf-file semtab_xml_config_wtq_baseline.yaml --num_proc 32 &> wtq_test_xml_baseline_log.txt
+
+'''
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.abspath('/media/research/yrl_aida_users/poddubny/poddubnyy/postgraduate/semtab_serializer/tests')))
 
 from utils.utils import load_config
 
-system_prompt = '''You are a Python expert specializing in pandas. Your task is to translate the
-given natural language statement into a single-line pandas expression. This
-expression must be valid and executable to verify the truth of the statement
-using the provided table. Consider the following:
-1. The table is represented as a pandas DataFrame named df.
-2. Do not include explanations, comments, or multiline outputs.
-3. Ensure the output is concise, correct, and when run outputs either True or
-False, and strictly in the following Json Format with a single key "PANDA":
+def convert_type(x):
+    return x
+
+def find_word(x):
+    return x
+system_prompt = '''
+### Instruction:
+You are a Python expert specializing in pandas. Your task is to translate the
+given natural language query into a single-line pandas expression. This
+# expression must be valid and executable to get answer on the question using the provided table. Consider the following:
+1. The table schema is represented in XML format.
+2. The table is represented as a pandas DataFrame named df.
+3. Do not include explanations, comments, or multiline outputs.
+4. Ensure the output is concise, correct, and strictly in the following Json Format with a single key "PANDA":
 "PANDA": "<your Pandas code>"
+
+### Table schema
+{table}
+### Query
+{query}
+### Response:\n
 '''
+
 system_correcting_prompt = '''
-You are a Python expert specializing in pandas. Your task is to correct a pandas code that translates a given natural language statement into a pandas expression. The input data, code, along with the specific error it contains, is provided.
+You are a Python expert specializing in pandas. Your task is to correct a pandas code that translates a given natural language query into a pandas expression. The input table schema,query, code, along with the specific error it contains, is provided.
 Your corrected pandas_code must be valid and executable by running the code
-snippet str(bool(eval(pandas_code))) ensuring it accurately evaluates the truth
-of the statement using the provided table with no errors.
-Make sure the pandas_code is of type boolean. Consider the following:
-1. The table is represented as a pandas DataFrame named df.
-2. Do not include explanations, comments, or multiline outputs.
-3. Ensure the output is concise, correct, and when run outputs either True or
-False, and strictly in the following Json Format with a single key "CORRECT PANDA": 
-"CORRECT PANDA": "<your Pandas code>"
+snippet eval(pandas_code) ensuring it accurately evaluates the answer using the provided table with no errors. Consider the following:
+1. The table schema is represented in XML format.
+2. The table is represented as a pandas DataFrame named df.
+3. Do not include explanations, comments, or multiline outputs.
+4.  Ensure the output is concise, correct, and strictly in the following Json Format with a single key "PANDA":
+"PANDA": "<your Pandas code>"
+
+### Table schema
+{table}
+### Query
+{query}
+### CODE
+{code_str}
+### ERROR
+{error_str}
+### Response:\n
 '''
 
+    
 
+def run_code_and_get_result(code_str, df):
+    """Выполняет код на нормализованной таблице и возвращает (результат, ошибка)"""
+    result = eval(code_str, {
+        'df': df,
+        'pd': pd,
+        'np': np,
+        'convert_type': convert_type,
+        'find_word': find_word
+    })
+    return result
 def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="http://127.0.0.1:9092/v1",api_key="dummy",
-                 model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5',system_prompt='', stop = ["Observation:","\n\n\n\n","\n \n \n"]):
+                 model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5', stop = ["Observation:","\n\n\n\n","\n \n \n"]):
     client = OpenAI(base_url=server_url, api_key=api_key)
     model_input = [
-        { 'role': 'system', 'content': system_prompt},
+        #{ 'role': 'system', 'content': system_prompt},
         { 'role': 'user', 'content': message}
     ]
     try:
@@ -66,6 +106,7 @@ def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="ht
 
     except Exception as e:
         print("Failed to call LLM: " + str(e))
+        print(message)
         time.sleep(6)
         if hasattr(e, 'response'):
             error_info = e.response.json()  
@@ -114,7 +155,7 @@ def parse_panda_code(input_string):
     
     return ""
 
-def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcting_prompt='', 
+def correct_code(df, table,query, code_str, error_str, iter_id=0, system_correcting_prompt='', 
                  stop=["Observation:", "\n\n\n\n", "\n \n \n"],
                  max_tokens=500, top_p=0.9, temperature=0.5, 
                  server_url="http://127.0.0.1:9092/v1", api_key="dummy",
@@ -129,49 +170,48 @@ def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcti
         else:
             df_info = ''
         # Формируем запрос на исправление
+        prompt = system_correcting_prompt.format(table=table, query=query,code_str=code_str,error_str=error_str).lstrip() 
         success, response = send_message(
-            f'INPUT DATA: {input_data}\n{df_info} CODE: {code_str}\nERROR: {error_str}',
+            prompt,
             stop=stop,
             max_tokens=max_tokens,
             top_p=top_p,
             temperature=temperature,
             server_url=server_url,
             api_key=api_key,
-            model_name=model_name,
-            system_prompt=system_correcting_prompt
-        )
+            model_name=model_name)
         
         if success:
             code = parse_panda_code(response)
             if not code:  # Если не удалось извлечь код
                 print(f"Iteration {iter_id}: Failed to parse code from response",f"text: {response}")
-                return correct_code(df, input_data, code_str, error_str, iter_id=iter_id+1,
+                return correct_code(df, table,query, code_str, error_str, iter_id=iter_id+1,
                                    max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                    server_url=server_url, api_key=api_key, model_name=model_name,
                                    system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
             
             try:
                 # Пробуем выполнить исправленный код
-                pandas_eval = str(bool(eval(code)))
+                pandas_eval = run_code_and_get_result(code,df)
                 print(f"Iteration {iter_id}: Code corrected successfully")
-                return True, code, response
+                return True, code, response,None
             except Exception as e:
                 print(f"Iteration {iter_id}: Code execution failed with error: {e}")
                 # Рекурсивно пытаемся исправить новый код
-                return correct_code(df, input_data, code, f'{type(e).__name__}: {e}', iter_id=iter_id+1,
+                return correct_code(df, table,query, code, f'{type(e).__name__}: {e}', iter_id=iter_id+1,
                                    max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                    server_url=server_url, api_key=api_key, model_name=model_name,
                                    system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
         else:
             print(f'Iteration {iter_id}: LLM call failed')
             # Если не удалось вызвать LLM, пробуем снова с теми же данными
-            return correct_code(df, input_data, code_str, error_str, iter_id=iter_id+1,
+            return correct_code(df, table,query, code_str, error_str, iter_id=iter_id+1,
                                max_tokens=max_tokens, top_p=top_p, temperature=temperature,
                                server_url=server_url, api_key=api_key, model_name=model_name,
                                system_correcting_prompt=system_correcting_prompt, max_iter=max_iter,add_df_info=add_df_info)
     else:
         print(f'Max iterations ({max_iter}) reached without successful correction')
-        return False, code_str, None
+        return False, code_str, None,error_str
 
 
 def dataset_processing(entry,serialized_table_field=None,system_correcting_prompt='',system_prompt='',add_df_info=False,**kwargs):
@@ -184,12 +224,15 @@ def dataset_processing(entry,serialized_table_field=None,system_correcting_promp
             continue
     #query = entry[f"{query_field}_query"]
     #query = entry['statement']+ ' ' + serialize_table(df,serialization_type='space')     
-    query = entry['statement']+ ' ' + entry[serialized_table_field]
-    success,response = send_message(query, system_prompt=system_prompt)
+    query = system_prompt.format(table=entry[serialized_table_field], query=entry['statement']).lstrip() 
+    success,response = send_message(query,model_name=kwargs.get('model_name','deepseek-ai/deepseek-coder-7b-instruct-v1.5'),
+                                    server_url=kwargs.get('server_url',"http://127.0.0.1:9092/v1"),max_tokens = None)
+                                    
 
     entry[f'{serialized_table_field}_answ'] = 'None'
     entry[f'{serialized_table_field}_label'] = 'None'
     entry[f'{serialized_table_field}_answ_correct'] = 'None'
+    entry[f'{serialized_table_field}_last_err'] = 'None'
 
     
     if success:
@@ -198,17 +241,25 @@ def dataset_processing(entry,serialized_table_field=None,system_correcting_promp
             code = parse_panda_code(response)
             try:
             
-                pandas_eval = str(bool(eval(code)))
+                pandas_eval = run_code_and_get_result(code,df)
                 entry[f'{serialized_table_field}_label'] = str(pandas_eval)
             except Exception as e:
                 print('EEEERRRRRRR', entry['id'])
                 print(e)
-                success_correcting, new_code, correcting_response = correct_code(df,query,code,f'{type(e).__name__}: {e}',
-                                             system_correcting_prompt=system_correcting_prompt,add_df_info=add_df_info)
+                success_correcting, new_code, correcting_response,last_err = correct_code(df,entry[serialized_table_field],
+                                                                                 entry['statement'],
+                                                                                 code,f'{type(e).__name__}: {e}',
+                                             system_correcting_prompt=system_correcting_prompt,add_df_info=add_df_info,
+                                            model_name=kwargs.get('model_name','deepseek-ai/deepseek-coder-7b-instruct-v1.5'),
+                                    server_url=kwargs.get('server_url',"http://127.0.0.1:9092/v1"))
                 if success_correcting:
-                    pandas_eval = str(bool(eval(new_code)))
+                    pandas_eval = run_code_and_get_result(new_code,df)
                     entry[f'{serialized_table_field}_label'] = str(pandas_eval)
                     entry[f'{serialized_table_field}_answ_correct'] = correcting_response
+                else:
+                    entry[f'{serialized_table_field}_last_err'] = str(last_err)
+                
+                
         except Exception as e:
             print (e)
         
@@ -237,24 +288,38 @@ def main():
     print(f"outputdata: {outputdata}")
     print(f"num-proc: {NUM_PROC}")
     print(f"conf-file: {conf_file}")
-    # Ваш основной код здесь
-    #dataset = dataset.filter(lambda x: True if x[f'{query_field}_answ']!='None' else False,num_proc=17)
-    #dataset = dataset.filter(lambda x: True if x[f'{query_field}_label']=='None' else False,num_proc=17)
+
     config_data = load_config(conf_file)
     dataset = load_from_disk(inputdata)
-    
+    previous_checkpoint_dir = None
+
     for config_name in config_data.keys():
         config = config_data[config_name]
         print(config_name)
         print(config) 
-        dataset2 = dataset.map(partial(dataset_processing,serialized_table_field=config_name,
+        dataset = dataset.map(partial(dataset_processing,serialized_table_field=config_name,
                                   system_correcting_prompt=system_correcting_prompt,
                         system_prompt=system_prompt,**config),num_proc=NUM_PROC)
         #if inputdata == outputdata:
          #   shutil.rmtree(inputdata)
-        dataset2.save_to_disk(outputdata)
-        dataset = dataset2
+        current_checkpoint_dir = f"{outputdata}_temp_ckpt_{config_name}"
+        dataset.save_to_disk(current_checkpoint_dir)
+        if previous_checkpoint_dir and os.path.exists(previous_checkpoint_dir):
+            print(f"Removing previous checkpoint: {previous_checkpoint_dir}")
+            shutil.rmtree(previous_checkpoint_dir)
+            
+        # 4. Обновляем ссылку на предыдущий чекпоинт для следующей итерации
+        previous_checkpoint_dir = current_checkpoint_dir
+    if previous_checkpoint_dir and os.path.exists(previous_checkpoint_dir):
+        # Если целевая папка уже существует, удаляем ее во избежание конфликта
+        if os.path.exists(outputdata):
+            shutil.rmtree(outputdata)
+            
+        os.rename(previous_checkpoint_dir, outputdata)
+        print(f"\nSuccess! Final dataset saved to: {outputdata}")
 
 if __name__ == "__main__":
-    #python abation_experiments.py --inputdata tab_fact_test_semtab__html_ablation --outputdata tab_fact_test_semtab_html_ablation_correcring_first --conf-file semtab_html_config_answer.yaml --num_proc 16 > tab_fact_test_html_ablation_log2.txt
-    main()          
+    #python ablation_experiments_local_model.py --inputdata tab_fact_test_semtab_xml_ablation --outputdata tab_fact_test_semtab_xml_ablation_lora --conf-file semtab_xml_config_answer_lora.yaml --num_proc 16 &> tab_fact_test_xml_ablation_lora_log.txt
+    main()     
+
+#    features: ['id', 'table_csv', 'table_text', 'label', 'statement', 'table_caption', 'semtab_xml_attributes_semantic_datatype_exampples_description_top1_tresh50', 'semtab_xml_attributes_datatype_exampples_description_top1_tresh50', 'semtab_xml_attributes_exampples_description_top1_tresh50', 'semtab_xml_attributes_description_top1_tresh50', 'semtab_xml_attributes_top1_tresh50', 'semtab_xml_elements_semantic_datatype_exampples_description_top1_tresh50', 'semtab_xml_elements_datatype_exampples_description_top1_tresh50', 'semtab_xml_elements_exampples_description_top1_tresh50', 'semtab_xml_elements_description_top1_tresh50', 'semtab_xml_elements_top1_tresh50'],
