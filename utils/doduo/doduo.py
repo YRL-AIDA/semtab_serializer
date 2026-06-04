@@ -213,7 +213,7 @@ class Doduo:
         return key.replace("bert.", "")
 
 
-    def annotate_columns(self, df: pd.DataFrame, top_k: int= 1, threshold: float = 0.5)-> List[List[Tuple[str,float]]]:
+    def annotate_columns(self, df: pd.DataFrame, top_k: int= 1, threshold: float = 0.5,add_data = None)-> List[List[Tuple[str,float]]]:
         
         ## Dataset
         input_dataset = DFColTypeTablewiseDataset(df, self.tokenizer,device=self.device)

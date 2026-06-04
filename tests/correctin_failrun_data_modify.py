@@ -13,11 +13,8 @@ from tqdm import tqdm
 import re
 import time
 import traceback
-import shutil
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.abspath('/media/research/yrl_aida_users/poddubny/poddubnyy/postgraduate/semtab_serializer/tests')))
-
-from utils.utils import load_config
 
 system_prompt = '''You are a Python expert specializing in pandas. Your task is to translate the
 given natural language statement into a single-line pandas expression. This
@@ -43,7 +40,7 @@ False, and strictly in the following Json Format with a single key "CORRECT PAND
 '''
 
 
-def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="http://127.0.0.1:9092/v1",api_key="dummy",
+def send_message(message,max_tokens=500,top_p=0.9,temperature=0.5,server_url="http://127.0.0.1:8800/v1",api_key="dummy",
                  model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5',system_prompt='', stop = ["Observation:","\n\n\n\n","\n \n \n"]):
     client = OpenAI(base_url=server_url, api_key=api_key)
     model_input = [
@@ -117,7 +114,7 @@ def parse_panda_code(input_string):
 def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcting_prompt='', 
                  stop=["Observation:", "\n\n\n\n", "\n \n \n"],
                  max_tokens=500, top_p=0.9, temperature=0.5, 
-                 server_url="http://127.0.0.1:9092/v1", api_key="dummy",
+                 server_url="http://127.0.0.1:8800/v1", api_key="dummy",
                  model_name='deepseek-ai/deepseek-coder-7b-instruct-v1.5', max_iter=5,add_df_info=False):
     """
     Рекурсивно исправляет код с использованием LLM
@@ -174,7 +171,7 @@ def correct_code(df, input_data, code_str, error_str, iter_id=0, system_correcti
         return False, code_str, None
 
 
-def dataset_processing(entry,serialized_table_field=None,system_correcting_prompt='',system_prompt='',add_df_info=False,**kwargs):
+def dataset_processing(entry,query_field=None,system_correcting_prompt='',system_prompt='',add_df_info=False,):
     df = pd.read_csv(StringIO(entry['table_text']), delimiter='#')
     for col in df.columns:
         try:
@@ -184,22 +181,22 @@ def dataset_processing(entry,serialized_table_field=None,system_correcting_promp
             continue
     #query = entry[f"{query_field}_query"]
     #query = entry['statement']+ ' ' + serialize_table(df,serialization_type='space')     
-    query = entry['statement']+ ' ' + entry[serialized_table_field]
+    query = entry['statement']+ ' ' + entry[query_field]
     success,response = send_message(query, system_prompt=system_prompt)
 
-    entry[f'{serialized_table_field}_answ'] = 'None'
-    entry[f'{serialized_table_field}_label'] = 'None'
-    entry[f'{serialized_table_field}_answ_correct'] = 'None'
+    entry[f'{query_field}_answ'] = 'None'
+    entry[f'{query_field}_label'] = 'None'
+    entry[f'{query_field}_answ_correct'] = 'None'
 
     
     if success:
-        entry[f'{serialized_table_field}_answ'] = response
+        entry[f'{query_field}_answ'] = response
         try:
             code = parse_panda_code(response)
             try:
             
                 pandas_eval = str(bool(eval(code)))
-                entry[f'{serialized_table_field}_label'] = str(pandas_eval)
+                entry[f'{query_field}_label'] = str(pandas_eval)
             except Exception as e:
                 print('EEEERRRRRRR', entry['id'])
                 print(e)
@@ -207,8 +204,8 @@ def dataset_processing(entry,serialized_table_field=None,system_correcting_promp
                                              system_correcting_prompt=system_correcting_prompt,add_df_info=add_df_info)
                 if success_correcting:
                     pandas_eval = str(bool(eval(new_code)))
-                    entry[f'{serialized_table_field}_label'] = str(pandas_eval)
-                    entry[f'{serialized_table_field}_answ_correct'] = correcting_response
+                    entry[f'{query_field}_label'] = str(pandas_eval)
+                    entry[f'{query_field}_answ_correct'] = correcting_response
         except Exception as e:
             print (e)
         
@@ -223,38 +220,30 @@ def main():
     parser.add_argument('--outputdata', type=str, default='./answer_gen_nlsep_none_filtered_new_dataset_failran_clear')
     parser.add_argument('--num_proc', type=int, default=16, 
                       help='Количество процессов')
-    parser.add_argument('--conf-file', type=str, default='./convert_conf.yaml')
-    #parser.add_argument('--add-df-info', type=int, default=0, help='Добавлять ли доп инфо о типах и столбцах df')
+    parser.add_argument('--query-field', type=str, default='nlsep', help='Тип query field')
+    parser.add_argument('--add-df-info', type=int, default=0, help='Добавлять ли доп инфо о типах и столбцах df')
     
     args = parser.parse_args()
     
     inputdata = args.inputdata
     outputdata = args.outputdata
+    query_field = args.query_field
     NUM_PROC = args.num_proc
-    #add_df_info = bool(args.add_df_info)
-    conf_file = args.conf_file
+    add_df_info = bool(args.add_df_info)
     print(f"inputdata: {inputdata}")
     print(f"outputdata: {outputdata}")
+    print(f"query_field: {query_field}")
     print(f"num-proc: {NUM_PROC}")
-    print(f"conf-file: {conf_file}")
+    print(f'add_df_info: {add_df_info}')
     # Ваш основной код здесь
+    dataset = load_from_disk(inputdata)
     #dataset = dataset.filter(lambda x: True if x[f'{query_field}_answ']!='None' else False,num_proc=17)
     #dataset = dataset.filter(lambda x: True if x[f'{query_field}_label']=='None' else False,num_proc=17)
-    config_data = load_config(conf_file)
-    dataset = load_from_disk(inputdata)
-    
-    for config_name in config_data.keys():
-        config = config_data[config_name]
-        print(config_name)
-        print(config) 
-        dataset2 = dataset.map(partial(dataset_processing,serialized_table_field=config_name,
+    dataset = dataset.map(partial(dataset_processing,query_field=query_field,
                                   system_correcting_prompt=system_correcting_prompt,
-                        system_prompt=system_prompt,**config),num_proc=NUM_PROC)
-        #if inputdata == outputdata:
-         #   shutil.rmtree(inputdata)
-        dataset2.save_to_disk(outputdata)
-        dataset = dataset2
+                                           system_prompt=system_prompt,add_df_info=add_df_info),num_proc=NUM_PROC)
+    dataset.save_to_disk(outputdata)
+
 
 if __name__ == "__main__":
-    #python abation_experiments.py --inputdata tab_fact_test_semtab__html_ablation --outputdata tab_fact_test_semtab_html_ablation_correcring_first --conf-file semtab_html_config_answer.yaml --num_proc 16 > tab_fact_test_html_ablation_log2.txt
     main()          
