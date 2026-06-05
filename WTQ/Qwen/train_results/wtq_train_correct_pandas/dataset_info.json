@@ -1,0 +1,36 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "id": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "table": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "code": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "result": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "error": {
+      "dtype": "null",
+      "_type": "Value"
+    },
+    "is_correct": {
+      "dtype": "bool",
+      "_type": "Value"
+    },
+    "target_value": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}
