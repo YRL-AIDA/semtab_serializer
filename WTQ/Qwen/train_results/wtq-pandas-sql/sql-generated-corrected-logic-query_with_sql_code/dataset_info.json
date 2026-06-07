@@ -1,0 +1,60 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "id_x": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "table": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "code": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "result": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "error": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "is_correct": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "target_value": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "nt_id": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "temperature": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "old_pandas_code": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "id_y": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "query": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "sql_code": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}

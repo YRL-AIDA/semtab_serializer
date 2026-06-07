@@ -1,0 +1,13 @@
+# в терминале прописать команды
+
+sudo apt-get update
+sudo apt-get install -y libgmp-dev libpcre3-dev build-essential
+sudo usermod -aG docker master
+
+# далее
+
+docker run -d -p 8000:8000 --name duckling rasa/duckling
+
+# проверка работы сервера
+
+docker ps
