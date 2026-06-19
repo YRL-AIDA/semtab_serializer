@@ -139,3 +139,7 @@ cython_debug/
 
 # idea
 .idea/
+/datasets/WikiTableQuestions/
+/utils/draft.py
+/utils/Amazon Sale Report.csv
+/utils/draft_2.py
