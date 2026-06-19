@@ -71,10 +71,20 @@ def clean_value(value: Any) -> str:
 
 
 def extract_number_string(s: str) -> str:
+<<<<<<< HEAD
     """Подготовка строки для проверки на число (удаление валют, %, скобок, текста)"""
     # Удаляем символы валют и % в начале/конце
     s = re.sub(r'^[$€£¥₽%\s]*', '', s)
     s = re.sub(r'[$€£¥₽%\s]*$', '', s)
+=======
+    """Подготовка строки для проверки на число (удаление валют, скобок, текста)"""
+    # Нормализация разных видов минусов и дефисов
+    s = s.replace('−', '-').replace('–', '-').replace('—', '-')
+
+    # Удаляем символы валют в начале/конце
+    s = re.sub(r'^[$€£¥₽\s]*', '', s)
+    s = re.sub(r'[$€£¥₽\s]*$', '', s)
+>>>>>>> e465acec6c8c10f8afb1068aeeb0b52163d3835a
 
     # Обработка скобок (финансовый формат)
     if s.startswith('(') and s.endswith(')'):
@@ -167,7 +177,7 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
 
     for value in values:
         if (pd.isna(value) or
-            (isinstance(value, str) and value.lower() in ['nan', 'na', 'n/a','nill'])):
+            (isinstance(value, str) and value.lower() in ['nan', 'na', 'n/a', 'nill', 'none','—','?'])):
             nan_count += 1
             continue
 
@@ -322,3 +332,4 @@ def analyze_dataset_parallel(dataset: pd.DataFrame, max_workers: Optional[int] =
             results[column_name] = column_result
 
     return results
+

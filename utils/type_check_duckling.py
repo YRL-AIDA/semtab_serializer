@@ -3,22 +3,19 @@ from type_check import check_type_comprehensive
 import requests
 import pandas as pd
 import json
+import requests
 
+# Создай сессию один раз глобально
+session = requests.Session()
 
 def parse_text(text: Any, locale: str = 'en_US') -> List[Dict[str, Any]]:
-    """
-    Парсит текст через Duckling.
-
-    :param text: Текст для парсинга. Может быть любым типом, который может быть преобразован в str.
-    :param locale: Локаль для парсинга (по умолчанию 'en_US').
-    :return: Список словарей, представляющих результаты парсинга Duckling.
-    """
     text_str = str(text) if pd.notna(text) else ""
 
     try:
-        response = requests.post(
+        response = session.post(
             'http://localhost:8000/parse',
-            data={'locale': locale, 'text': text_str}
+            data={'locale': locale, 'text': text_str},
+            timeout=5
         )
         response.raise_for_status()
         return response.json()
@@ -79,8 +76,8 @@ def df_to_duckling(df: pd.DataFrame, lines: int = 5) -> Dict[str, Tuple[str, int
     return aggregated_results
 
 
-df = pd.read_csv('C:/Users/PC/semtab_serializer/tests/Amazon Sale Report.csv')
-result = df_to_duckling(df, 3)
+df = pd.read_csv('Amazon Sale Report.csv')
+result = df_to_duckling(df, len(df))
 
 for col, types_list in result.items():
     print(col, types_list)
