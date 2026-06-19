@@ -3,7 +3,57 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union, Any, Optional, Dict, Tuple
 
+# ----------------------------------------------------------------------
+# Множители для текстовых суффиксов (тыс, млн, k, M и т.п.)
+# ----------------------------------------------------------------------
+MULTIPLIERS = {
+    # Английские
+    'k': 10**3,          'thousand': 10**3,
+    'm': 10**6,          'million': 10**6,
+    'b': 10**9,          'billion': 10**9,
+    't': 10**12,         'trillion': 10**12,
+    # Русские (транслитерация и кириллица)
+    'тыс': 10**3,        'тысяч': 10**3,        'тысяча': 10**3,
+    'млн': 10**6,        'миллион': 10**6,
+    'млрд': 10**9,       'миллиард': 10**9,
+    'трлн': 10**12,      'триллион': 10**12,
+    'сотня': 100,        'сотни': 100,          'сотен': 100
+}
 
+MULTIPLIER_PATTERN = re.compile(
+    r'^([+-]?\d+(?:[.,]\d+)?)\s*(' + '|'.join(MULTIPLIERS.keys()) + r')$',
+    re.IGNORECASE
+)
+
+def apply_multiplier(s: str) -> str:
+    """Если строка заканчивается известным множителем, умножает число и возвращает строку.
+       Иначе возвращает исходную строку без изменений."""
+    match = MULTIPLIER_PATTERN.match(s)
+    if not match:
+        return s
+    num_str, suffix = match.groups()
+    # Приводим суффикс к нижнему регистру для поиска в словаре
+    multiplier = MULTIPLIERS.get(suffix.lower())
+    if multiplier is None:
+        return s
+
+    # Преобразуем числовую часть во float (поддерживаются оба разделителя)
+    num_str_clean = num_str.replace(',', '.')
+    try:
+        value = float(num_str_clean) * multiplier
+    except ValueError:
+        return s
+
+    # Возвращаем без экспоненциальной записи, целые — без десятичной точки
+    if value.is_integer():
+        return str(int(value))
+    else:
+        # Убираем лишние нули после запятой
+        return f"{value:.10f}".rstrip('0').rstrip('.')
+
+# ----------------------------------------------------------------------
+# Оригинальные функции (с доработками)
+# ----------------------------------------------------------------------
 def clean_value(value: Any) -> str:
     """Базовая очистка значения (удаление спецсимволов)"""
     if value is None:
@@ -12,8 +62,7 @@ def clean_value(value: Any) -> str:
     if not isinstance(value, str):
         value = str(value)
 
-    # Заменяем неразрывные пробелы и
-    # другие специальные символы
+    # Заменяем неразрывные пробелы и другие специальные символы
     value = value.replace('\xa0', ' ')
     value = value.replace('\ufeff', '')
     value = value.replace('\u200b', '')
@@ -22,10 +71,10 @@ def clean_value(value: Any) -> str:
 
 
 def extract_number_string(s: str) -> str:
-    """Подготовка строки для проверки на число (удаление валют, скобок, текста)"""
-    # Удаляем символы валют в начале/конце
-    s = re.sub(r'^[$€£¥₽\s]*', '', s)
-    s = re.sub(r'[$€£¥₽\s]*$', '', s)
+    """Подготовка строки для проверки на число (удаление валют, %, скобок, текста)"""
+    # Удаляем символы валют и % в начале/конце
+    s = re.sub(r'^[$€£¥₽%\s]*', '', s)
+    s = re.sub(r'[$€£¥₽%\s]*$', '', s)
 
     # Обработка скобок (финансовый формат)
     if s.startswith('(') and s.endswith(')'):
@@ -39,6 +88,7 @@ def extract_number_string(s: str) -> str:
 
     return s.strip()
 
+
 def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, int]:
     """
     Определяет тип данных. Все значения проверяются через регулярные выражения.
@@ -49,11 +99,9 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
 
     # 2. Если это одиночное значение - создаем список из одного элемента
     if not isinstance(data, (pd.Series, list)):
-        # Преобразуем одиночное значение в список для единообразной обработки
         values = [data]
         is_single_value = True
     else:
-        # Если это Series или список
         if isinstance(data, pd.Series):
             values = data.tolist()
         else:
@@ -62,18 +110,24 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
 
     # РЕГУЛЯРНЫЕ ВЫРАЖЕНИЯ
 
-    # Булевы значения - расширенный набор
-    bool_true_pattern = re.compile(r'^(true|yes|да|истина|1|\+)$', re.IGNORECASE)
-    bool_false_pattern = re.compile(r'^(false|no|нет|ложь|0|-|\[ \])$', re.IGNORECASE)
+    # Булевы значения – убраны [] и прочерк
+    bool_true_pattern = re.compile(r'^(true|yes|да|истина)$', re.IGNORECASE)
+    bool_false_pattern = re.compile(r'^(false|no|нет|ложь)$', re.IGNORECASE)
 
     # Базовые числовые паттерны (после очистки)
     exp_pattern = re.compile(r'^[-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)[eE][-+]?\d+$')
 
     # Паттерны для float с поддержкой разных разделителей
-    float_pattern = re.compile(r'^[+-]?(?:\d{1,3}(?:[ ,.]\d{3})*[.,]\d+|\d+[.,]\d+|[.,]\d+|\d+[.,])$')
+    float_pattern = re.compile(
+        r'^[+-]?(?:\d{1,3}(?:[ ,.]\d{3})*(?:[.,]\d+)?'  # разделители тысяч + опциональная дробная часть
+        r'|\d+[.,]\d+'  # простое десятичное число
+        r'|[.,]\d+'  # начинается с разделителя
+        r'|\d+[.,]'  # заканчивается разделителем
+        r')$'
+    )
 
-    # Паттерн для int с разделителями тысяч (точка, запятая или пробел)
-    int_with_separators_pattern = re.compile(r'^[+-]?\d{1,3}(?:[ ,.]\d{3})*$')
+    # Паттерн для int с разделителями тысяч (только пробел и запятая, точка исключена)
+    int_with_separators_pattern = re.compile(r'^[+-]?\d{1,3}(?:[ ,]\d{3})*$')
     int_pattern = re.compile(r'^[+-]?\d+$')
 
     # Паттерны для дат и времени с улучшениями
@@ -83,14 +137,16 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
         'date_eu': re.compile(r'^\d{1,2}\.\d{1,2}\.\d{4}$'),
         'date_slash': re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$'),
         'date_year_last': re.compile(r'^\d{1,2}-\d{1,2}-\d{2}$'),
-        # Новые паттерны для дат с буквенными месяцами
+        # Новый шаблон для 12.12.26 (DD.MM.YY)
+        'date_eu_short': re.compile(r'^\d{1,2}\.\d{1,2}\.\d{2}$'),
+        # Паттерны для дат с буквенными месяцами
         'date_month_short': re.compile(r'^\d{1,2}-[A-Za-z]{3,9}-\d{4}$'),
         'date_month_short_dot': re.compile(r'^\d{1,2}\.[A-Za-z]{3,9}\.\d{4}$'),
         'date_month_long': re.compile(r'^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}$'),
         'date_month_short_comma': re.compile(r'^[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}$'),
     }
 
-    # ИСПРАВЛЕНИЕ 3: Паттерны для времени с необязательными ведущими нулями
+    # Паттерны для времени
     time_patterns = {
         'time_basic': re.compile(r'^\d{1,2}:\d{1,2}$'),
         'time_seconds': re.compile(r'^\d{1,2}:\d{1,2}:\d{1,2}$'),
@@ -121,7 +177,6 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
                 type_counts['int'] = type_counts.get('int', 0) + 1
                 continue
             elif isinstance(value, float):
-                # Проверяем, является ли float целым числом
                 if value.is_integer():
                     type_counts['int'] = type_counts.get('int', 0) + 1
                 else:
@@ -134,9 +189,12 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
             type_counts['empty'] = type_counts.get('empty', 0) + 1
             continue
 
+        # ----- ПРИМЕНЯЕМ ТЕКСТОВЫЕ МНОЖИТЕЛИ (тыс, млн, k, M и т.д.) -----
+        str_value = apply_multiplier(str_value)
+
         found_type = False
 
-        # 1. Проверка на BOOL (кроме одиночных символов)
+        # 1. Проверка на BOOL (кроме одиночных символов, '-' не участвует)
         if not found_type and len(str_value) > 1:
             if bool_true_pattern.match(str_value) or bool_false_pattern.match(str_value):
                 type_counts['bool'] = type_counts.get('bool', 0) + 1
@@ -154,7 +212,7 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
                     except:
                         continue
 
-        # 3. Проверка на ДАТУ
+        # 3. Проверка на ДАТУ (добавлен date_eu_short)
         if not found_type:
             for pattern in date_patterns.values():
                 if pattern.match(str_value):
@@ -189,10 +247,9 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
             if re.match(r'^\d+\.0+$', cleaned_num):
                 cleaned_num = cleaned_num.split('.')[0]
 
-            # Удаляем все пробелы для чисел с пробелами в качестве разделителей
+            # Удаляем все пробелы для чисел с пробелами в качестве разделителей,
             # но сохраняем десятичный разделитель
             if ' ' in cleaned_num and (',' in cleaned_num or '.' in cleaned_num):
-                # Для чисел с десятичными разделителями сохраняем последний разделитель
                 if ',' in cleaned_num:
                     parts = cleaned_num.split(',')
                     cleaned_num = parts[0].replace(' ', '') + ',' + parts[1]
@@ -200,24 +257,22 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
                     parts = cleaned_num.split('.')
                     cleaned_num = parts[0].replace(' ', '') + '.' + parts[1]
 
-            # Сначала проверяем int с разделителями тысяч
+            # int с разделителями (только пробел/запятая, без точки)
             if int_with_separators_pattern.match(cleaned_num.replace(' ', '')):
                 type_counts['int'] = type_counts.get('int', 0) + 1
                 found_type = True
-            # Проверяем обычный int
             elif int_pattern.match(cleaned_num):
                 type_counts['int'] = type_counts.get('int', 0) + 1
                 found_type = True
-            # Проверяем float (уже включает разные форматы)
             elif float_pattern.match(cleaned_num):
                 type_counts['float'] = type_counts.get('float', 0) + 1
                 found_type = True
 
         # Все остальное - строка
         if not found_type:
-            # Одиночные символы обрабатываем отдельно
+            # Одиночные символы – '-' исключён из bool
             if len(str_value) == 1:
-                if str_value in ['+', '-', '1', '0']:
+                if str_value in ['+', '1', '0']:  # '-' больше не считается bool
                     type_counts['bool'] = type_counts.get('bool', 0) + 1
                 else:
                     type_counts['str'] = type_counts.get('str', 0) + 1
@@ -234,11 +289,9 @@ def check_type_comprehensive(data: Union[pd.Series, list, Any]) -> Tuple[str, in
     if not valid_types:
         return 'None', nan_count
 
-    # Для одиночного значения возвращаем его тип
     if is_single_value and len(valid_types) == 1:
         result_type = list(valid_types.keys())[0]
     else:
-        # Для списка/Series находим наиболее частый тип
         result_type = max(valid_types, key=valid_types.get)
 
     # Если есть и int и float - считаем float
